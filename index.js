@@ -6,12 +6,8 @@ import { renderRpgSidebar } from './rpgui.js';
 import { executeFlushToLorebook } from './flush.js';
 import { injectFormattingLock } from './lock.js';
 import { estimateTokens } from './token.js';
-// FIX: Removed EXTENSION_INTERCEPTOR_TYPE from the named imports
-import { 
-    eventSource, 
-    event_types, 
-    ExtensionInterceptor 
-} from '../../../../script.js';
+// Cleaned up imports to keep only verified core exports
+import { eventSource, event_types } from '../../../../script.js';
 
 (function() {
     const context = SillyTavern.getContext();
@@ -136,8 +132,8 @@ import {
             (el) => { variableTextAreaRef = el; } 
         );
 
-        // FIX: Using the explicit string 'generate' instead of the missing export object
-        ExtensionInterceptor.add('generate', async (chat, ctxSize, abort, type) => {
+        // FIX: Replaced broken ES6 references with standard native `context.addInterceptor` setup
+        context.addInterceptor(async (chat, ctxSize, abort, type) => {
             if (settings.enableFormatLock) {
                 try {
                     await injectFormattingLock(chat, type);
