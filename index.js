@@ -33,10 +33,27 @@ import { eventSource, event_types } from '../../../../script.js';
 
     function getAvailableSTProfiles() {
         try {
-            const apiProfiles = window.SillyTavern?.settings?.connection_profiles || [];
-            if (apiProfiles.length === 0) return [{ id: 'default', name: 'Default API Endpoint' }];
-            return apiProfiles.map(p => ({ id: p.id || p.name, name: p.name }));
+            // 1. Check the primary runtime settings location
+            let apiProfiles = window.settings?.connection_profiles 
+                        || window.SillyTavern?.settings?.connection_profiles;
+
+            // 2. If that fails, look into the specific API/Presets storage state
+            if (!apiProfiles && window.api_profiles) {
+                apiProfiles = window.api_profiles;
+            }
+
+            // Fallback if empty or unresolved
+            if (!apiProfiles || apiProfiles.length === 0) {
+                return [{ id: 'default', name: 'Default API Endpoint' }];
+            }
+
+            // Map profiles out safely
+            return apiProfiles.map(p => ({ 
+                id: p.id || p.name || 'default', 
+                name: p.name || 'Unnamed Profile' 
+            }));
         } catch (e) {
+            console.error("FlushMonitor: Failed to fetch API profiles from ST context", e);
             return [{ id: 'default', name: 'Default API Endpoint' }];
         }
     }
