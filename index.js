@@ -6,7 +6,13 @@ import { renderRpgSidebar } from './rpgui.js';
 import { executeFlushToLorebook } from './flush.js';
 import { injectFormattingLock } from './lock.js';
 import { estimateTokens } from './token.js';
-import { eventSource, event_types } from '../../../../script.js';
+// Updated to import ExtensionInterceptor modules alongside event structures
+import { 
+    eventSource, 
+    event_types, 
+    ExtensionInterceptor, 
+    EXTENSION_INTERCEPTOR_TYPE 
+} from '../../../../script.js';
 
 (function() {
     const context = SillyTavern.getContext();
@@ -131,7 +137,8 @@ import { eventSource, event_types } from '../../../../script.js';
             (el) => { variableTextAreaRef = el; } 
         );
 
-        SillyTavern.registerInterceptor(async (chat, ctxSize, abort, type) => {
+        // Fix: Replaced broken legacy reference with native ExtensionInterceptor layout registry
+        ExtensionInterceptor.add(EXTENSION_INTERCEPTOR_TYPE.GENERATE, async (chat, ctxSize, abort, type) => {
             if (settings.enableFormatLock) {
                 try {
                     await injectFormattingLock(chat, type);
