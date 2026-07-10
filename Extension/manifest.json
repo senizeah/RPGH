@@ -6,4 +6,6 @@
     "author": "Senizeah",
     "js": "index.js",
     "type": "module"
+    "homePage": "https://github.com/senizeah/RPGH/tree/main",
+    "auto_update": true,
 }
