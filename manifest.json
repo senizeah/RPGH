@@ -1,11 +1,11 @@
 {
-    "name": "Sen's RPG Helper",
-    "id": "sen-rpgh",
-    "version": "1.0.0",
-    "description": "RPGH: A RPG engine and UI extension to make RP's more user friendly, including a lightweight AI-ism re-writer. Summary: Manages context build-up via a summarization Helper. Flush: Monitors cache footprint via a dual-hook architecture. WORKFLOW: 1. Pre-Gen Hook (Interceptor) injects dynamic formatting rules to user output. 2. Post-Gen Hook (Event Tracker) intercepts incoming LLM replies immediately upon stream completion, executes a regex/LLM structural prose cleanup, and triggers the sliding-window summarizer to rotate aged context into target Lorebook modules.",
-    "author": "Senizeah",
-    "js": "index.js",
-    "type": "module"
-    "homePage": "https://github.com/senizeah/RPGH/tree/main",
-    "auto_update": true,
+  "name": "Sen's RPG Helper",
+  "id": "sen-rpgh",
+  "version": "1.0.0",
+  "description": "RPGH: A RPG engine and UI extension to make RP's more user friendly, including a lightweight AI-ism re-writer. Summary: Manages context build-up via a summarization Helper. Flush: Monitors cache footprint via a dual-hook architecture. WORKFLOW: 1. Pre-Gen Hook (Interceptor) injects dynamic formatting rules to user output. 2. Post-Gen Hook (Event Tracker) intercepts incoming LLM replies immediately upon stream completion, executes a regex/LLM structural prose cleanup, and triggers the sliding-window summarizer to rotate aged context into target Lorebook modules.",
+  "author": "Senizeah",
+  "js": "index.js",
+  "type": "module",
+  "homePage": "https://github.com/senizeah/RPGH/tree/main",
+  "auto_update": true
 }
