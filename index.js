@@ -33,27 +33,37 @@ import { eventSource, event_types } from '../../../../script.js';
 
     function getAvailableSTProfiles() {
         try {
-            // 1. Check the primary runtime settings location
-            let apiProfiles = window.settings?.connection_profiles 
-                        || window.SillyTavern?.settings?.connection_profiles;
-
-            // 2. If that fails, look into the specific API/Presets storage state
-            if (!apiProfiles && window.api_profiles) {
-                apiProfiles = window.api_profiles;
+            // Find SillyTavern's native Connection Profiles dropdown element
+            const stDropdown = document.getElementById('connection_profiles');
+            
+            if (stDropdown && stDropdown.options && stDropdown.options.length > 0) {
+                const profiles = [];
+                for (let i = 0; i < stDropdown.options.length; i++) {
+                    const option = stDropdown.options[i];
+                    // Skip placeholder options if any exist
+                    if (option.value) {
+                        profiles.push({
+                            id: option.value, // This represents the profile ID/Value string
+                            name: option.text  // This represents the display name string
+                        });
+                    }
+                }
+                if (profiles.length > 0) return profiles;
             }
 
-            // Fallback if empty or unresolved
-            if (!apiProfiles || apiProfiles.length === 0) {
-                return [{ id: 'default', name: 'Default API Endpoint' }];
+            // Fallback option 2: Check window.settings if DOM isn't ready
+            const fallbackProfiles = window.settings?.connection_profiles;
+            if (fallbackProfiles && fallbackProfiles.length > 0) {
+                return fallbackProfiles.map(p => ({
+                    id: p.id || p.name || 'default',
+                    name: p.name || 'Unnamed Profile'
+                }));
             }
 
-            // Map profiles out safely
-            return apiProfiles.map(p => ({ 
-                id: p.id || p.name || 'default', 
-                name: p.name || 'Unnamed Profile' 
-            }));
+            // Ultimate fallback
+            return [{ id: 'default', name: 'Default API Endpoint' }];
         } catch (e) {
-            console.error("FlushMonitor: Failed to fetch API profiles from ST context", e);
+            console.error("FlushMonitor: Failed to scrape API profiles", e);
             return [{ id: 'default', name: 'Default API Endpoint' }];
         }
     }
