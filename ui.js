@@ -458,38 +458,59 @@ function buildGuardrailsSection(container, settings, saveSettings) {
  * @param {function} getVariableEditAreaRef - Returns variable text field pointer to index.js
  * @returns {HTMLDivElement|null} Pointer to live metric container or null if already injected
  */
+
+/**
+ * ----------------------------------------------------------------------------
+ * MAIN MODULE ORCHESTRATOR
+ * Compiles and maps sub-render runs into the SillyTavern extension grid panel.
+ * ----------------------------------------------------------------------------
+ */
 export function initializeExtensionUI(settings, saveSettings, executeManualFlush, getAvailableProfiles, onUiUpdateNeeded, getVariableEditAreaRef) {
-    const panel = document.getElementById('extensions_settings');
+    // FIX 1: Target the third-party extensions panel instead of the core panel
+    const panel = document.getElementById('extensions_settings2');
     if (!panel || document.getElementById('flush-monitor-panel')) return null;
 
+    // FIX 2: Create the native SillyTavern inline-drawer structure
     const mainWrapper = document.createElement('div');
     mainWrapper.id = 'flush-monitor-panel';
-    mainWrapper.className = 'extension_panel';
-    mainWrapper.style = 'margin: 15px 0; padding: 12px; border-radius: 6px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08);';
+    mainWrapper.className = 'my-extension-settings'; 
 
-    const header = document.createElement('h4');
-    header.innerText = '🧠 Prefill-Cache Flush Monitor';
-    header.style = 'margin-top: 0; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #a78bfa;';
-    mainWrapper.appendChild(header);
+    const inlineDrawer = document.createElement('div');
+    inlineDrawer.className = 'inline-drawer';
 
-    // Dynamic stats element returned back to index.js for counting hooks
+    // --- DRAWER HEADER (Collapsible Toggle) ---
+    const drawerHeader = document.createElement('div');
+    drawerHeader.className = 'inline-drawer-toggle inline-drawer-header';
+    
+    const titleText = document.createElement('b');
+    titleText.innerText = '🧠 Prefill-Cache Flush Monitor';
+    
+    const chevronIcon = document.createElement('div');
+    chevronIcon.className = 'inline-drawer-icon fa-solid fa-circle-chevron-down down';
+    
+    drawerHeader.appendChild(titleText);
+    drawerHeader.appendChild(chevronIcon);
+
+    // --- DRAWER CONTENT (Where your UI goes) ---
+    const drawerContent = document.createElement('div');
+    drawerContent.className = 'inline-drawer-content';
+
     const monitorElement = document.createElement('div');
     monitorElement.style = 'padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px; font-family: monospace; font-size: 11px; margin-bottom: 12px; border-left: 3px solid #22c55e;';
-    mainWrapper.appendChild(monitorElement);
+    drawerContent.appendChild(monitorElement);
 
     const flushBtn = document.createElement('button');
     flushBtn.innerText = '⚡ Execute Manual Chapter Flush Now';
     flushBtn.className = 'menu_button';
     flushBtn.style = 'width: 100%; text-align: center; background: #2563eb; font-weight: bold; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px;';
     flushBtn.onclick = executeManualFlush;
-    mainWrapper.appendChild(flushBtn);
+    drawerContent.appendChild(flushBtn);
 
     const formContainer = document.createElement('div');
     formContainer.style = 'display: flex; flex-direction: column; gap: 10px; font-size: 12px;';
 
     const profiles = getAvailableProfiles();
 
-    // Sequentially assemble layout boundaries via isolated configurations
     buildCoreSlidingCacheSection(formContainer, settings, saveSettings, onUiUpdateNeeded);
     buildFlushArchivalSection(formContainer, settings, saveSettings);
     buildSummarizerSection(formContainer, settings, saveSettings, profiles);
@@ -501,8 +522,15 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
     
     buildGuardrailsSection(formContainer, settings, saveSettings);
 
-    mainWrapper.appendChild(formContainer);
-    panel.insertBefore(mainWrapper, panel.firstChild);
+    drawerContent.appendChild(formContainer);
+
+    // --- ASSEMBLE THE DOM ---
+    inlineDrawer.appendChild(drawerHeader);
+    inlineDrawer.appendChild(drawerContent);
+    mainWrapper.appendChild(inlineDrawer);
+
+    // Append to the extensions tab
+    panel.appendChild(mainWrapper);
 
     return monitorElement;
 }
