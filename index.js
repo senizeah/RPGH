@@ -13,6 +13,8 @@ import { eventSource, event_types } from '../../../../script.js';
     let monitorElement = null;
     let variableTextAreaRef = null; 
 
+    console.log("FlushMonitor [Lifecycle]: Initializing namespace wrapper...");
+
     if (!context.extensionSettings['flush-monitor']) {
         context.extensionSettings['flush-monitor'] = {};
     }
@@ -26,6 +28,7 @@ import { eventSource, event_types } from '../../../../script.js';
     );
 
     async function saveSettings() {
+        console.log("FlushMonitor [Settings]: Serializing configurations...", settings);
         context.extensionSettings['flush-monitor'] = settings;
         await context.saveSettingsObj();
         renderRpgSidebar(settings, context);
@@ -33,43 +36,34 @@ import { eventSource, event_types } from '../../../../script.js';
 
     function getAvailableSTProfiles() {
         try {
-            // Find SillyTavern's native Connection Profiles dropdown element
             const stDropdown = document.getElementById('connection_profiles');
-            
             if (stDropdown && stDropdown.options && stDropdown.options.length > 0) {
                 const profiles = [];
                 for (let i = 0; i < stDropdown.options.length; i++) {
                     const option = stDropdown.options[i];
-                    // Skip placeholder options if any exist
                     if (option.value) {
-                        profiles.push({
-                            id: option.value, // This represents the profile ID/Value string
-                            name: option.text  // This represents the display name string
-                        });
+                        profiles.push({ id: option.value, name: option.text });
                     }
                 }
                 if (profiles.length > 0) return profiles;
             }
-
-            // Fallback option 2: Check window.settings if DOM isn't ready
-            const fallbackProfiles = window.settings?.connection_profiles;
-            if (fallbackProfiles && fallbackProfiles.length > 0) {
-                return fallbackProfiles.map(p => ({
-                    id: p.id || p.name || 'default',
-                    name: p.name || 'Unnamed Profile'
-                }));
-            }
-
-            // Ultimate fallback
             return [{ id: 'default', name: 'Default API Endpoint' }];
         } catch (e) {
-            console.error("FlushMonitor: Failed to scrape API profiles", e);
+            console.error("FlushMonitor [UI Error]: Failed to fetch profiles", e);
             return [{ id: 'default', name: 'Default API Endpoint' }];
         }
     }
 
     function updateCount() {
-        if (!context.chat || !monitorElement) return;
+        console.log("FlushMonitor [Telemetry]: updateCount() triggered.");
+        if (!context.chat) {
+            console.warn("FlushMonitor [Telemetry Check]: context.chat is undefined or uninstantiated.");
+            return;
+        }
+        if (!monitorElement) {
+            console.warn("FlushMonitor [Telemetry Check]: monitorElement is null (UI not appended yet).");
+            return;
+        }
         
         const totalMessages = context.chat.length;
         const summarizedCount = context.chat.filter(m => m.extra && m.extra.is_summarized).length;
@@ -92,13 +86,16 @@ import { eventSource, event_types } from '../../../../script.js';
             variableTextAreaRef.value = JSON.stringify(settings.runtimeVariables, null, 4);
         }
 
-        const tokenMetrics = estimateTokens(context, settings); // Assuming this returns the object based on your imports
+        console.log("FlushMonitor [Telemetry]: Gathering token metrics...");
+        const tokenMetrics = estimateTokens(context, settings); 
         settings.runtimeVariables = Object.assign({}, settings.runtimeVariables, tokenMetrics);
 
+        console.log("FlushMonitor [Telemetry]: Passing off to renderRpgSidebar(). Positions Mode:", settings.rpgSidebarPosition);
         renderRpgSidebar(settings, context);
     }
 
     async function handlePostGeneration() {
+        console.log("FlushMonitor [Pipeline]: handlePostGeneration interceptor matching processing tokens...");
         const chat = context.chat;
         if (!chat || chat.length === 0) return;
 
@@ -122,9 +119,9 @@ import { eventSource, event_types } from '../../../../script.js';
     }
 
     // --- MAIN INITIALIZATION ORCHESTRATION ---
-    
-    // FIX 1: Use native eventSource instead of jQuery on document
     eventSource.on(event_types.APP_READY, () => {
+        console.log("FlushMonitor [Lifecycle]: SillyTavern APP_READY captured! Injecting panel layers...");
+        
         monitorElement = initializeExtensionUI(
             settings, 
             saveSettings, 
@@ -146,7 +143,6 @@ import { eventSource, event_types } from '../../../../script.js';
             const lastMsg = chat[chat.length - 1];
             if (lastMsg && lastMsg.is_user && !lastMsg.is_system) {
                 try {
-                    console.log("FlushMonitor Interceptor: Recalculating state engine for user turn before generation...");
                     await processRpgStateStage(chat, settings, context, updateCount);
                 } catch (e) {
                     console.error("FlushMonitor [Interceptor Error]: Pre-flight RPG calculation failed", e);
