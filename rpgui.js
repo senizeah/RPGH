@@ -377,7 +377,7 @@ export function renderRpgSidebar(settings, context) {
         background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(8px); -webkit-backdropfilter: blur(8px);
         border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 12px;
         color: #f3f4f6; font-family: system-ui, -apple-system, sans-serif;
-        z-index: 99; overflow-y: auto; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        z-index: 9999; overflow-y: auto; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
     `;
 
     // 1. Header
