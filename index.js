@@ -6,12 +6,11 @@ import { renderRpgSidebar } from './rpgui.js';
 import { executeFlushToLorebook } from './flush.js';
 import { injectFormattingLock } from './lock.js';
 import { estimateTokens } from './token.js';
-// Updated to import ExtensionInterceptor modules alongside event structures
+// FIX: Removed EXTENSION_INTERCEPTOR_TYPE from the named imports
 import { 
     eventSource, 
     event_types, 
-    ExtensionInterceptor, 
-    EXTENSION_INTERCEPTOR_TYPE 
+    ExtensionInterceptor 
 } from '../../../../script.js';
 
 (function() {
@@ -137,8 +136,8 @@ import {
             (el) => { variableTextAreaRef = el; } 
         );
 
-        // Fix: Replaced broken legacy reference with native ExtensionInterceptor layout registry
-        ExtensionInterceptor.add(EXTENSION_INTERCEPTOR_TYPE.GENERATE, async (chat, ctxSize, abort, type) => {
+        // FIX: Using the explicit string 'generate' instead of the missing export object
+        ExtensionInterceptor.add('generate', async (chat, ctxSize, abort, type) => {
             if (settings.enableFormatLock) {
                 try {
                     await injectFormattingLock(chat, type);
