@@ -358,16 +358,31 @@ function openPromptEditorModal(settings, context) {
  * ----------------------------------------------------------------------------
  */
 export function renderRpgSidebar(settings, context) {
+    console.log("FlushMonitor [Sidebar]: renderRpgSidebar entry called.");
+    
     if (sidebarElement) {
+        console.log("FlushMonitor [Sidebar]: Purging stale sidebar component container...");
         sidebarElement.remove();
         sidebarElement = null;
     }
 
-    // Fix: Changed 'chat' to 'chat_container' to correctly verify the ST chat UI exists
+    // Guardrail Check Evaluation Trace
+    const hasPosition = !!settings.rpgSidebarPosition;
+    const isNotHidden = settings.rpgSidebarPosition !== "hidden";
+    const chatContainerExists = !!document.getElementById('chat_container');
+
+    console.log(`FlushMonitor [Sidebar Guardrails Evaluation]: 
+      - Position configuration defined: ${hasPosition} (${settings.rpgSidebarPosition})
+      - Visibility status explicitly unlocked: ${isNotHidden}
+      - Target #chat_container present in DOM tree: ${chatContainerExists}`
+    );
+
     if (!settings.rpgSidebarPosition || settings.rpgSidebarPosition === "hidden" || !document.getElementById('chat_container')) {
+        console.warn("FlushMonitor [Sidebar Halt]: Aborting initialization loop. Pre-flight alignment check failed.");
         return;
     }
 
+    console.log("FlushMonitor [Sidebar Block]: Constructing live sidebar component node layout...");
     sidebarElement = document.createElement('div');
     sidebarElement.id = 'rpg-status-sidebar';
     
@@ -406,7 +421,6 @@ export function renderRpgSidebar(settings, context) {
             const flags = Array.isArray(item.flags) ? item.flags : [];
             const flagStr = flags.join(', ').toLowerCase();
             
-            // Collect global status indicators
             if (flagStr.includes('hood up')) statusCallouts.push('Hood Up');
             if (flagStr.includes('disguised')) statusCallouts.push('Disguised');
 
@@ -452,7 +466,7 @@ export function renderRpgSidebar(settings, context) {
     }
     sidebarElement.appendChild(table);
 
-    // 4. Modal Triggers (Action Grid)
+    // 4. Action Grid Elements
     const buttonGrid = document.createElement('div');
     buttonGrid.style = 'display: grid; grid-template-columns: 1fr 1fr; gap: 6px;';
 
@@ -493,7 +507,7 @@ export function renderRpgSidebar(settings, context) {
 
     sidebarElement.appendChild(buttonGrid);
 
-    // 5. Token Tracker Table
+    // 5. Token Tracker Data Grid Injection
     const tokenTracker = document.createElement('div');
     tokenTracker.style = 'margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;';
     
@@ -514,13 +528,8 @@ export function renderRpgSidebar(settings, context) {
             return row;
         };
 
-        // Row 1: Header
         table.appendChild(createRow(['Active Tokens'], true));
-        
-        // Row 2: Column Headers
         table.appendChild(createRow(['Lorebook', 'Summary', 'Raw', 'ChapterLedger', 'RPGLedger'], true));
-        
-        // Row 3: Values
         table.appendChild(createRow([
             data.lorebookTValue || 0, 
             data.summaryTValue || 0, 
@@ -528,11 +537,7 @@ export function renderRpgSidebar(settings, context) {
             data.chapterledgerTValue || 0, 
             data.rpgledgerTValue || 0
         ]));
-
-        // Row 4: Column Headers
         table.appendChild(createRow(['Main Prompt', 'Summary Prompt', 'Cleaner Prompt', 'RPGH Prompt', 'Char Description'], true));
-        
-        // Row 5: Values
         table.appendChild(createRow([
             data.mainPromptTValue || 0,
             data.summarizerPromptTValue || 0,
@@ -540,11 +545,7 @@ export function renderRpgSidebar(settings, context) {
             data.rpgSystemPromptTValue || 0,
             data.characterDescriptionTValue || 0
         ]));
-
-        // Row 6: Column Headers
         table.appendChild(createRow(['Lorebook Total', 'Summary Total', 'Cleaner Total', 'RPGH Total'], true));
-
-        // Row 7: Values
         table.appendChild(createRow([
             data.lorebookATotal || 0,
             data.summaryATotal || 0,
@@ -555,12 +556,11 @@ export function renderRpgSidebar(settings, context) {
         return table;
     };
 
-    // We'll use runtimeVariables or a dedicated object for these values
-    // For now, we use settings.runtimeVariables as the source
     const tokenData = settings.runtimeVariables || {};
     tokenTracker.appendChild(createTokenTable(tokenData));
-    
     sidebarElement.appendChild(tokenTracker);
+
+    console.log("FlushMonitor [Sidebar]: Appending constructed sidebar element container directly to document.body...");
     document.body.appendChild(sidebarElement);
 }
 
