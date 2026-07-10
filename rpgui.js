@@ -363,7 +363,8 @@ export function renderRpgSidebar(settings, context) {
         sidebarElement = null;
     }
 
-    if (!settings.rpgSidebarPosition || settings.rpgSidebarPosition === "hidden" || !document.getElementById('chat')) {
+    // Fix: Changed 'chat' to 'chat_container' to correctly verify the ST chat UI exists
+    if (!settings.rpgSidebarPosition || settings.rpgSidebarPosition === "hidden" || !document.getElementById('chat_container')) {
         return;
     }
 
