@@ -140,8 +140,7 @@ import { estimateTokens } from './token.js';
             (el) => { variableTextAreaRef = el; }
         );
         monitorElement = uiControls.monitorElement;
-        console.log(`[Flush-Monitor:ORCHESTRATOR] Initializing UI with profile getter. It will fetch profiles dynamically.`);
-
+        
         // NATIVE 1.18.0 LIFE-CYCLE EVENTS: Replaces DOM Mutation and Network Observers completely
         const eventSource = window.SillyTavern?.eventSource || context?.eventSource;
         if (eventSource) {
@@ -150,6 +149,10 @@ import { estimateTokens } from './token.js';
             });
             eventSource.on('chat_changed', updateCount);
             eventSource.on('message_sent', updateCount);
+            eventSource.on('settings_updated', () => {
+                logTelemetry("Settings updated event received. Updating UI profile dropdowns.", "debug");
+                uiControls.updateProfileDropdowns();
+            });
         }
         
         updateCount();
