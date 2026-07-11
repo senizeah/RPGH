@@ -498,13 +498,19 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
     const formContainer = document.createElement('div');
     formContainer.style = 'display: flex; flex-direction: column; gap: 10px; font-size: 12px;';
 
-    // Helper function to populate profile selects
-    const populateProfileSelect = (selectElement, settingsKey) => {
-        // Clear existing options
+// ⬇️ Make the function async ⬇️
+    const populateProfileSelect = async (selectElement, settingsKey) => {
+        // Clear existing options and add a temporary loading state
         selectElement.innerHTML = '';
+        const loadingOpt = document.createElement('option');
+        loadingOpt.innerText = 'Loading...';
+        selectElement.appendChild(loadingOpt);
 
-        const profiles = getAvailableProfilesCallback(); // Call the dynamic getter
+        // ⬇️ Await the API fetch ⬇️
+        const profiles = await getAvailableProfilesCallback(); 
         
+        selectElement.innerHTML = ''; // Clear loading state once fetched
+
         // Add a default "None" option if no profiles are available or selected
         if (!profiles || profiles.length === 0) {
             const defaultOpt = document.createElement('option');
@@ -523,12 +529,10 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
             selectElement.appendChild(opt);
         });
 
-        // If no option was selected, and a default is present in settings, try to select it.
-        // This handles cases where a profile might have been deleted or not loaded yet.
+        // Fallbacks
         if (!selectElement.value && settings[settingsKey]) {
             selectElement.value = settings[settingsKey];
         }
-        // Fallback to 'default' if no profile is selected and no settings value exists.
         if (!selectElement.value && profiles.length > 0) {
             selectElement.value = profiles[0].id;
             settings[settingsKey] = profiles[0].id;
@@ -536,7 +540,6 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
             selectElement.value = 'default';
             settings[settingsKey] = 'default';
         }
-        
     };
 
     // Fetch live reference pointer directly from global context map
