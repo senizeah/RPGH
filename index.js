@@ -136,21 +136,13 @@ import { estimateTokens } from './token.js';
             saveSettings, 
             () => executeFlushToLorebook(context.extensionSettings['flush-monitor'], updateCount, context), 
             
-            // ⬇️ Replace the old synchronous array with this Async Fetch ⬇️
-            async () => {
-                try {
-                    const response = await fetch('/api/settings');
-                    const data = await response.json();
-                    return data?.connectionManager?.profiles || [{ id: 'default', name: 'Default Profile Worker' }];
-                } catch (error) {
-                    console.error("Flush-Monitor: Failed to fetch profiles from API:", error);
-                    return [{ id: 'default', name: 'Default Profile Worker' }];
-                }
-            }, 
+            // ⬇️ The correct global object path for SillyTavern 1.18.0 ⬇️
+            () => window.settings?.connectionManager?.profiles || [{ id: 'default', name: 'Default Profile Worker' }], 
             
             updateCount, 
             (el) => { variableTextAreaRef = el; }
-        );
+        ); 
+
         monitorElement = uiControls.monitorElement;
         
         // NATIVE 1.18.0 LIFE-CYCLE EVENTS: Replaces DOM Mutation and Network Observers completely
