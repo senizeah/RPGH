@@ -130,18 +130,20 @@ import { estimateTokens } from './token.js';
                 console.error("SETTINGS WRITE FAULT:", err);
             }
         }
+// Access the profiles directly from the global settings object
+const getAvailableProfiles = () => {
+    return window.settings?.connectionManager?.profiles || [{ id: 'default', name: 'Default Profile' }];
+};
 
-        let uiControls = initializeExtensionUI(
-            context.extensionSettings['flush-monitor'], 
-            saveSettings, 
-            () => executeFlushToLorebook(context.extensionSettings['flush-monitor'], updateCount, context), 
-            
-            // ⬇️ The correct global object path for SillyTavern 1.18.0 ⬇️
-            () => window.settings?.connectionManager?.profiles || [{ id: 'default', name: 'Default Profile Worker' }], 
-            
-            updateCount, 
-            (el) => { variableTextAreaRef = el; }
-        ); 
+// Pass this function to your UI builder
+let uiControls = initializeExtensionUI(
+    context.extensionSettings['flush-monitor'], 
+    saveSettings, 
+    // ... other arguments
+    getAvailableProfiles, 
+    updateCount, 
+    (el) => { variableTextAreaRef = el; }
+);
 
         monitorElement = uiControls.monitorElement;
         
