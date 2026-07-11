@@ -131,11 +131,14 @@ import { estimateTokens } from './token.js';
             }
         }
 
+        const availableProfilesForUI = window.SillyTavern?.settings?.connectionManager?.profiles || [];
+        console.log(`[Flush-Monitor:ORCHESTRATOR] Available profiles for UI:`, availableProfilesForUI);
+
         monitorElement = initializeExtensionUI(
             context.extensionSettings['flush-monitor'], 
             saveSettings, 
             () => executeFlushToLorebook(context.extensionSettings['flush-monitor'], updateCount, context), 
-            () => window.SillyTavern?.settings?.connectionManager?.profiles || [{ id: 'default', name: 'Default Profile Worker' }], 
+            () => availableProfilesForUI.length > 0 ? availableProfilesForUI : [{ id: 'default', name: 'Default Profile Worker' }], 
             updateCount, 
             (el) => { variableTextAreaRef = el; }
         );
