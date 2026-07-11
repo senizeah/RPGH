@@ -468,7 +468,7 @@ function buildGuardrailsSection(container, settings, saveSettings) {
  * Compiles and maps sub-render runs into the SillyTavern extension grid panel.
  * ----------------------------------------------------------------------------
  */
-export function initializeExtensionUI(settings, saveSettings, executeManualFlush, getAvailableProfiles, onUiUpdateNeeded, getVariableEditAreaRef) {
+export function initializeExtensionUI(settings, saveSettings, executeManualFlush, getAvailableProfilesCallback, onUiUpdateNeeded, getVariableEditAreaRef) {
     const panel = document.getElementById('extensions_settings2');
     if (!panel) return null;
 
@@ -514,17 +514,56 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
     const formContainer = document.createElement('div');
     formContainer.style = 'display: flex; flex-direction: column; gap: 10px; font-size: 12px;';
 
-    const profiles = getAvailableProfiles();
+    // Helper function to populate profile selects
+    const populateProfileSelect = (selectElement, settingsKey) => {
+        // Clear existing options
+        selectElement.innerHTML = '';
+
+        const profiles = getAvailableProfilesCallback(); // Call the dynamic getter
+        
+        // Add a default "None" option if no profiles are available or selected
+        if (!profiles || profiles.length === 0) {
+            const defaultOpt = document.createElement('option');
+            defaultOpt.value = 'default';
+            defaultOpt.innerText = 'Default Profile Worker';
+            selectElement.appendChild(defaultOpt);
+        }
+
+        profiles.forEach(prof => {
+            const opt = document.createElement('option');
+            opt.value = prof.id;
+            opt.innerText = prof.name;
+            if (settings[settingsKey] === prof.id || settings[settingsKey] === prof.name) {
+                opt.selected = true;
+            }
+            selectElement.appendChild(opt);
+        });
+
+        // If no option was selected, and a default is present in settings, try to select it.
+        // This handles cases where a profile might have been deleted or not loaded yet.
+        if (!selectElement.value && settings[settingsKey]) {
+            selectElement.value = settings[settingsKey];
+        }
+        // Fallback to 'default' if no profile is selected and no settings value exists.
+        if (!selectElement.value && profiles.length > 0) {
+            selectElement.value = profiles[0].id;
+            settings[settingsKey] = profiles[0].id;
+        } else if (!selectElement.value && profiles.length === 0) {
+            selectElement.value = 'default';
+            settings[settingsKey] = 'default';
+        }
+        
+    };
 
     // Fetch live reference pointer directly from global context map
     const liveSettingsRef = window.SillyTavern.getContext().extensionSettings['flush-monitor'] || settings;
 
     buildCoreSlidingCacheSection(formContainer, liveSettingsRef, saveSettings, onUiUpdateNeeded);
     buildFlushArchivalSection(formContainer, liveSettingsRef, saveSettings);
-    buildSummarizerSection(formContainer, liveSettingsRef, saveSettings, profiles);
-    buildProseCleanerSection(formContainer, liveSettingsRef, saveSettings, profiles);
+    buildSummarizerSection(formContainer, liveSettingsRef, saveSettings, populateProfileSelect);
+    buildProseCleanerSection(formContainer, liveSettingsRef, saveSettings, populateProfileSelect);
     
-    buildRpgEngineSection(formContainer, liveSettingsRef, saveSettings, profiles, () => {
+    buildRpgEngineSection(formContainer, liveSettingsRef, saveSettings, populateProfileSelect, () => {
         window.dispatchEvent(new CustomEvent('flush-monitor:sidebar-config-changed'));
     }, getVariableEditAreaRef);
     
