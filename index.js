@@ -131,17 +131,15 @@ import { estimateTokens } from './token.js';
             }
         }
 
-        const availableProfilesForUI = window.SillyTavern?.settings?.connectionManager?.profiles || [];
-        console.log(`[Flush-Monitor:ORCHESTRATOR] Available profiles for UI:`, availableProfilesForUI);
-
         monitorElement = initializeExtensionUI(
             context.extensionSettings['flush-monitor'], 
             saveSettings, 
             () => executeFlushToLorebook(context.extensionSettings['flush-monitor'], updateCount, context), 
-            () => availableProfilesForUI.length > 0 ? availableProfilesForUI : [{ id: 'default', name: 'Default Profile Worker' }], 
+            () => window.SillyTavern?.settings?.connectionManager?.profiles || [{ id: 'default', name: 'Default Profile Worker' }], 
             updateCount, 
             (el) => { variableTextAreaRef = el; }
         );
+        console.log(`[Flush-Monitor:ORCHESTRATOR] Initializing UI with profile getter. It will fetch profiles dynamically.`);
 
         // NATIVE 1.18.0 LIFE-CYCLE EVENTS: Replaces DOM Mutation and Network Observers completely
         const eventSource = window.SillyTavern?.eventSource || context?.eventSource;
