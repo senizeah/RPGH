@@ -18,34 +18,21 @@
         else console.log(`%c${payload}`, "color: #10b981; font-weight: bold;");
     }
 
-    // Load modules dynamically to match the proper example patterns
-    async function loadExtensionModules() {
-        try {
-            const [ui, cleaner, summarizer, rpgh, rpgui, flush, token, extensions] = await Promise.all([
-                import(`${baseModuleURL}/ui.js`),
-                import(`${baseModuleURL}/cleaner.js`),
-                import(`${baseModuleURL}/summarizer.js`),
-                import(`${baseModuleURL}/rpgh.js`),
-                import(`${baseModuleURL}/rpgui.js`),
-                import(`${baseModuleURL}/flush.js`),
-                import(`${baseModuleURL}/token.js`),
-                import(`/scripts/extensions.js`)
-            ]);
-
-            return { ui, cleaner, summarizer, rpgh, rpgui, flush, token, extensions };
-        } catch (err) {
-            logTelemetry('loader', `Failed to dynamically import modules: ${err.message}`, 'error');
-            throw err;
-        }
-    }
+    let uiModule;
+    let cleanerModule;
+    let summarizerModule;
+    let rpghModule;
+    let rpguiModule;
+    let flushModule;
+    let tokenModule;
 
     // Helper to retrieve active settings with default fallbacks
-    function getActiveSettings(context, cleaner, summarizer, rpgh) {
+    function getActiveSettings(context) {
         return Object.assign(
             {},
-            cleaner.defaultCleanerSettings,
-            summarizer.defaultSummarizerSettings,
-            rpgh.defaultRpgSettings,
+            cleanerModule.defaultCleanerSettings,
+            summarizerModule.defaultSummarizerSettings,
+            rpghModule.defaultRpgSettings,
             context?.extensionSettings?.['flush-monitor'] || {}
         );
     }
@@ -57,7 +44,6 @@
             return;
         }
 
-        const modules = await loadExtensionModules();
         const activeContext = window.SillyTavern?.getContext();
         const chat = activeContext?.chat;
 
@@ -71,7 +57,7 @@
             return; // Only process AI generated non-system messages
         }
 
-        const currentSettings = getActiveSettings(activeContext, modules.cleaner, modules.summarizer, modules.rpgh);
+        const currentSettings = getActiveSettings(activeContext);
 
         try {
             isPipelineProcessing = true;
@@ -81,11 +67,11 @@
             if (!lastMsg.extra?.is_cleaned) {
                 try {
                     logTelemetry('ProseCleaner', `Dispatching to cleaner stage for author: ${lastMsg.name}`);
-                    await modules.cleaner.processProseCleanerStage(
+                    await cleanerModule.processProseCleanerStage(
                         chat,
                         lastMsg,
                         currentSettings,
-                        (text) => modules.token.estimateTokens(text, currentSettings),
+                        (text) => tokenModule.estimateTokens(text, currentSettings),
                         activeContext
                     );
                 } catch (cleanerErr) {
@@ -96,12 +82,12 @@
             // Stage 2: Summarizer
             try {
                 logTelemetry('Summarizer', `Dispatching to summarizer stage...`);
-                await modules.summarizer.processSummarizerStage(
+                await summarizerModule.processSummarizerStage(
                     chat,
                     currentSettings,
-                    (text) => modules.token.estimateTokens(text, currentSettings),
-                    () => modules.flush.executeFlushToLorebook(currentSettings, () => updateCount(modules), activeContext),
-                    () => updateCount(modules),
+                    (text) => tokenModule.estimateTokens(text, currentSettings),
+                    () => flushModule.executeFlushToLorebook(currentSettings, () => updateCount(), activeContext),
+                    () => updateCount(),
                     activeContext
                 );
             } catch (summarizerErr) {
@@ -112,13 +98,13 @@
             try {
                 if (activeContext && typeof activeContext.characters !== 'undefined') {
                     logTelemetry('RPGHelper', `Dispatching turn to RPG state calculations...`);
-                    await modules.rpgh.processRpgStateStage(chat, currentSettings, activeContext);
+                    await rpghModule.processRpgStateStage(chat, currentSettings, activeContext);
                 }
             } catch (rpgErr) {
                 logTelemetry('RPGHelper', `Stage failed: ${rpgErr.message}`, 'error');
             }
 
-            updateCount(modules);
+            updateCount();
             logTelemetry('pipeline', 'All pipeline execution stages completed successfully.', 'info');
         } catch (globalErr) {
             logTelemetry('pipeline', `Critical global execution failure: ${globalErr.message}`, 'error');
@@ -128,11 +114,11 @@
     }
 
     // Refresh UI display counts and variable textareas
-    function updateCount(modules) {
+    function updateCount() {
         const context = window.SillyTavern?.getContext();
         if (!context?.chat || !monitorElement) return;
 
-        const currentSettings = getActiveSettings(context, modules.cleaner, modules.summarizer, modules.rpgh);
+        const currentSettings = getActiveSettings(context);
         const totalMessages = context.chat.length;
         const summarizedCount = context.chat.filter(m => m.extra?.is_summarized).length;
 
@@ -146,7 +132,7 @@
             variableTextAreaRef.value = JSON.stringify(currentSettings.runtimeVariables, null, 4);
         }
 
-        modules.rpgui.renderRpgSidebar(currentSettings, context);
+        rpguiModule.renderRpgSidebar(currentSettings, context);
     }
 
     // Standardized profile layout formatter
