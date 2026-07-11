@@ -1,9 +1,9 @@
 {
-  "display_name": "RPG Helper",
+  "display_name": "RPGHelper",
   "loading_order": 1,
   "js": "index.js",
-  "author": "senizeah",
-  "version": "1.0.0",
+  "author": "Senizeah",
+  "version": "0.1.0",
   "homePage": "https://github.com/senizeah/RPGH",
   "auto_update": true,
   "minimum_client_version": "1.12.0"
