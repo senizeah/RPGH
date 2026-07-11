@@ -19,16 +19,44 @@ export const defaultSummarizerSettings = {
     similarityThreshold: 0.65,
 };
 
+async function executeSummarizerWorker(profileConfig, systemPrompt, userContent, context) {
+    console.log(`[Summarizer] Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
+
+    const finalizedPrompt = `### Instruction:\n${systemPrompt}\n\n${userContent}\n\n### Response:\n`;
+
+    const payload = {
+        prompt: finalizedPrompt,
+        api_type: profileConfig.api || profileConfig.api_type || profileConfig.apiType,
+        api_server: profileConfig.url || profileConfig.custom_url,
+        api_key: profileConfig.apiKey || profileConfig.api_key,
+        model: profileConfig.model || profileConfig.active_model,
+        preset: profileConfig.preset || null,
+        is_background_task: true,
+        bypass_global_state: true
+    };
+
+    try {
+        const requestSecure = window.SillyTavern?.requestSecure || context?.requestSecure;
+        if (typeof requestSecure !== 'function') {
+            throw new Error("SillyTavern.requestSecure is not available.");
+        }
+        const response = await requestSecure('/api/textgen/generate', payload);
+        return response?.text || response;
+    } catch (err) {
+        console.error(`[Summarizer] Secure API processing failed:`, err);
+        throw err;
+    }
+}
+
 /**
  * Processes sliding chat history nodes, generating atomic summarizations.
- * FIX: Replaced broken window.SillyTavern.api request with the centralized workerExecutor
  */
-export async function processSummarizerStage(chat, settings, estimateTokensCb, executeFlushCb, updateCountCb, context, workerExecutor) {
+export async function processSummarizerStage(chat, settings, estimateTokensCb, executeFlushCb, updateCountCb, context) {
     if (chat.length <= settings.keepRawCount) return;
     
     // Auto-flush threshold trigger routes directly to the flush pass
     if (settings.autoFlushEnabled && chat.length >= settings.autoFlushThreshold) {
-        console.log("FlushMonitor: Auto-flush threshold hit. Bypassing summary for immediate rotation...");
+        console.log("[Summarizer] Auto-flush threshold hit. Bypassing summary for immediate rotation...");
         await executeFlushCb();
         return;
     }
@@ -63,7 +91,15 @@ export async function processSummarizerStage(chat, settings, estimateTokensCb, e
     }
 
     try {
-        console.log(`FlushMonitor Pipeline [2/3]: Routing context to Summarizer profile [${settings.selectedProfile}]...`);
+        const rawProfiles = context?.allProfilesRepository || window.SillyTavern?.getContext()?.allProfilesRepository || [];
+        const profileObj = rawProfiles.find(p => p.id === settings.selectedProfile || p.name === settings.selectedProfile);
+
+        if (!profileObj) {
+            console.warn(`[Summarizer] Targeted connection profile (${settings.selectedProfile}) missing from repository. Skipping summarization.`);
+            return;
+        }
+
+        console.log(`[Summarizer] Mapping profile ID ${settings.selectedProfile} to config: "${profileObj.name}"`);
         
         const historySlice = chat.slice(targetIndex + 1, targetIndex + 21);
         let historyContextString = "";
@@ -78,25 +114,26 @@ export async function processSummarizerStage(chat, settings, estimateTokensCb, e
         }
         userPromptPayload += `Following is the message to summarize:\n${targetMessage.name}: ${targetMessage.mes}`;
 
-        // FIX: Routed cleanly through the central execution bridge to avoid 403 / uninstantiated API errors
-        const summary = await workerExecutor(
-            settings.selectedProfile,
+        const summary = await executeSummarizerWorker(
+            profileObj,
             settings.summarizerPrompt,
-            userPromptPayload
+            userPromptPayload,
+            context
         );
 
         if (!summary) throw new Error("Connection Profile returned an empty summary payload.");
 
         if (!targetMessage.extra) targetMessage.extra = {};
         targetMessage.extra.is_summarized = true;
-        targetMessage.extra.summary_text = summary;
+        targetMessage.extra.summary_text = summary.trim();
         
         const keyExtract = summary.toLowerCase().replace(/[^a-zA-Z0-9 ]/g, "").split(" ").filter(w => w.length > 4).slice(0, 5);
         targetMessage.extra.summary_keys = keyExtract.length > 0 ? keyExtract : ["history"];
 
         await context.saveChat();
         updateCountCb();
+        console.log("[Summarizer] Successfully saved atomic message summary.");
     } catch (err) {
-        console.error("FlushMonitor Pipeline [Error]: Summary sequence failed.", err);
+        console.error("[Summarizer] Summary sequence failed:", err);
     }
 }

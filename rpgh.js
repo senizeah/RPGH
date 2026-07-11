@@ -103,56 +103,33 @@ function safelySaveSettings(context) {
     }
 }
 
-async function executeRpgWorker(profileName, systemPrompt, userContent, context) {
-    console.log(`[RPG Engine] [TRACE] Entering worker. Targeting: "${profileName}"`);
+async function executeRpgWorker(profileConfig, systemPrompt, userContent, context) {
+    console.log(`[RPGHelper] Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
 
-    return new Promise((resolve) => {
-        // MUST use the global core eventSource
-        const eventSource = window.SillyTavern?.eventSource || context?.eventSource || window.eventSource;
+    const finalizedPrompt = `### Instruction:\n${systemPrompt}\n\n${userContent}\n\n### Response:\n`;
 
-        if (!eventSource) {
-            console.error("[RPG Engine] [FAIL] Global eventSource is unavailable.");
-            resolve('');
-            return;
+    const payload = {
+        prompt: finalizedPrompt,
+        api_type: profileConfig.api || profileConfig.api_type || profileConfig.apiType,
+        api_server: profileConfig.url || profileConfig.custom_url,
+        api_key: profileConfig.apiKey || profileConfig.api_key,
+        model: profileConfig.model || profileConfig.active_model,
+        preset: profileConfig.preset || null,
+        is_background_task: true,
+        bypass_global_state: true
+    };
+
+    try {
+        const requestSecure = window.SillyTavern?.requestSecure || context?.requestSecure;
+        if (typeof requestSecure !== 'function') {
+            throw new Error("SillyTavern.requestSecure is not available.");
         }
-
-        const safetyTimeout = setTimeout(() => {
-            console.warn("[RPG Engine] [TIMEOUT] Generation expired.");
-            eventSource.removeListener('background_gen_finished', eventHandler);
-            resolve('');
-        }, 7000);
-
-        const eventHandler = (data) => {
-            console.log("[RPG Engine] [TRACE] Signal received.");
-            clearTimeout(safetyTimeout);
-            eventSource.removeListener('background_gen_finished', eventHandler);
-            resolve(data?.text || '');
-        };
-        
-        eventSource.on('background_gen_finished', eventHandler);
-
-        // Sanitize inputs
-        const cleanPrompt = systemPrompt.replace(/"/g, '\\"');
-        const cleanContent = userContent.replace(/"/g, '\\"');
-        
-        // Command must have quotes around the profile name to handle spaces
-        const macroString = `/profile-genstream "${profileName}" "${cleanPrompt}" "${cleanContent}"`;
-
-        try {
-            console.log(`[RPG Engine] [EXEC] Sending command: ${macroString}`);
-            const executeCmd = window.SillyTavern?.executeSlashCommands || context?.executeSlashCommands || window.executeSlashCommands;
-            if (typeof executeCmd === 'function') {
-                executeCmd(macroString);
-            } else {
-                throw new Error("No executeSlashCommands function available on context or window.");
-            }
-        } catch (err) {
-            console.error("[RPG Engine] [FAIL] Dispatch failed:", err);
-            clearTimeout(safetyTimeout);
-            eventSource.removeListener('background_gen_finished', eventHandler);
-            resolve('');
-        }
-    });
+        const response = await requestSecure('/api/textgen/generate', payload);
+        return response?.text || response;
+    } catch (err) {
+        console.error(`[RPGHelper] Secure API processing failed:`, err);
+        throw err;
+    }
 }
 
 /**
@@ -165,17 +142,17 @@ export async function processRpgStateStage(chat, settings, context) {
     const immediateLastMsg = chat[chat.length - 1];
     if (!immediateLastMsg || !immediateLastMsg.mes) return;
 
-    // LOOKUP: Retrieve name from connectionManager profiles
-    const profiles = window.SillyTavern?.settings?.connectionManager?.profiles || [];
-    console.log(`[RPG Engine] Raw settings.rpgWorkerProfile: "${settings.rpgWorkerProfile}"`);
-    console.log(`[RPG Engine] Available profiles:`, profiles);
+    const rawProfiles = context?.allProfilesRepository || window.SillyTavern?.getContext()?.allProfilesRepository || [];
+    console.log(`[RPGHelper] Raw settings.rpgWorkerProfile: "${settings.rpgWorkerProfile}"`);
 
-    const profileObj = profiles.find(p => p.id === settings.rpgWorkerProfile || p.name === settings.rpgWorkerProfile);
-    console.log(`[RPG Engine] Found profile object:`, profileObj);
-    
-    const profileName = profileObj ? profileObj.name : settings.rpgWorkerProfile;
+    const profileObj = rawProfiles.find(p => p.id === settings.rpgWorkerProfile || p.name === settings.rpgWorkerProfile);
 
-    console.log(`[RPG Engine] Final profileName used: "${profileName}"`);
+    if (!profileObj) {
+        console.warn(`[RPGHelper] Targeted connection profile (${settings.rpgWorkerProfile}) missing from repository. Skipping RPG calculations.`);
+        return;
+    }
+
+    console.log(`[RPGHelper] Mapping profile ID ${settings.rpgWorkerProfile} to config: "${profileObj.name}"`);
 
     const baselineJson = JSON.stringify(settings.runtimeVariables, null, 2);
     const systemPrompt = settings.rpgSystemPrompt.replace(/{{baselineString}}/g, baselineJson);
@@ -184,7 +161,7 @@ export async function processRpgStateStage(chat, settings, context) {
         const userPromptPayload = `### LATEST NARRATIVE TURN:\n${immediateLastMsg.name}: ${immediateLastMsg.mes.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()}`;
         
         const output = await executeRpgWorker(
-            profileName, 
+            profileObj, 
             systemPrompt,
             userPromptPayload,
             context
@@ -195,7 +172,7 @@ export async function processRpgStateStage(chat, settings, context) {
             await syncStateToLorebook(settings, context);
         }
     } catch (err) {
-        console.error("FlushMonitor Pipeline [Error]: RPG State Engine processing failed.", err);
+        console.error("[RPGHelper] RPG State Engine processing failed:", err);
     }
 }
 

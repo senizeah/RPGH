@@ -1,315 +1,352 @@
-import { initializeExtensionUI, updateProfileDropdowns } from './ui.js';
-import { processProseCleanerStage, defaultCleanerSettings } from './cleaner.js';
-import { processSummarizerStage, defaultSummarizerSettings } from './summarizer.js';
-import { processRpgStateStage, defaultRpgSettings } from './rpgh.js';
-import { renderRpgSidebar } from './rpgui.js';
-import { executeFlushToLorebook } from './flush.js';
-import { estimateTokens } from './token.js';
-import { getContext } from '/scripts/extensions.js';
-
-(function() {
+(function () {
+    const baseModuleURL = import.meta.url.substring(0, import.meta.url.lastIndexOf('/'));
+    
     let isExtensionInitialized = false;
-    let monitorElement = null;
-    let variableTextAreaRef = null; 
     let isPipelineProcessing = false;
+    let cycleAttempts = 0;
+    const maxLifecycleRetries = 50;
 
-    function logTelemetry(msg, lvl = 'info') {
-        const payload = `[Flush-Monitor:ORCHESTRATOR] [${lvl.toUpperCase()}] ${msg}`;
+    let monitorElement = null;
+    let variableTextAreaRef = null;
+    let internalProfilesRepository = [];
+
+    // Helper to log clearly tagged telemetry
+    function logTelemetry(tag, msg, lvl = 'info') {
+        const payload = `[RPGH-Orchestrator:${tag.toUpperCase()}] [${lvl.toUpperCase()}] ${msg}`;
         if (lvl === 'error') console.error(`%c${payload}`, "color: #ef4444; font-weight: bold;");
         else if (lvl === 'warn') console.warn(`%c${payload}`, "color: #fbbf24;");
-        else console.log(`%c${payload}`, "color: #10b981; font-weight: bold;"); 
+        else console.log(`%c${payload}`, "color: #10b981; font-weight: bold;");
     }
 
-    function getActiveSettings(context) {
+    // Load modules dynamically to match the proper example patterns
+    async function loadExtensionModules() {
+        try {
+            const [ui, cleaner, summarizer, rpgh, rpgui, flush, token, extensions] = await Promise.all([
+                import(`${baseModuleURL}/ui.js`),
+                import(`${baseModuleURL}/cleaner.js`),
+                import(`${baseModuleURL}/summarizer.js`),
+                import(`${baseModuleURL}/rpgh.js`),
+                import(`${baseModuleURL}/rpgui.js`),
+                import(`${baseModuleURL}/flush.js`),
+                import(`${baseModuleURL}/token.js`),
+                import(`/scripts/extensions.js`)
+            ]);
+
+            return { ui, cleaner, summarizer, rpgh, rpgui, flush, token, extensions };
+        } catch (err) {
+            logTelemetry('loader', `Failed to dynamically import modules: ${err.message}`, 'error');
+            throw err;
+        }
+    }
+
+    // Helper to retrieve active settings with default fallbacks
+    function getActiveSettings(context, cleaner, summarizer, rpgh) {
         return Object.assign(
-            {}, 
-            defaultCleanerSettings, 
-            defaultSummarizerSettings, 
-            defaultRpgSettings, 
+            {},
+            cleaner.defaultCleanerSettings,
+            summarizer.defaultSummarizerSettings,
+            rpgh.defaultRpgSettings,
             context?.extensionSettings?.['flush-monitor'] || {}
         );
     }
 
-    async function forceTriggerPipeline(sourceName = "Event Bus Trigger") {
-        if (isPipelineProcessing) return;
+    // Centralised execution pipeline
+    async function executeExtensionPipeline(sourceName) {
+        if (isPipelineProcessing) {
+            logTelemetry('pipeline', 'Pipeline execution bypassed: already processing.', 'warn');
+            return;
+        }
+
+        const modules = await loadExtensionModules();
         const activeContext = window.SillyTavern?.getContext();
         const chat = activeContext?.chat;
-        if (!chat || !chat.length) return;
 
-        const targetIndex = chat.length - 1;
-        const lastMsg = chat[targetIndex];
-        const currentSettings = getActiveSettings(activeContext);
+        if (!chat || !chat.length) {
+            logTelemetry('pipeline', 'Halted. Chat history is empty.', 'warn');
+            return;
+        }
 
-        if (!lastMsg || lastMsg.is_user || lastMsg.system || lastMsg.name === "SillyTavern System") return;
+        const lastMsg = chat[chat.length - 1];
+        if (!lastMsg || lastMsg.is_user || lastMsg.system || lastMsg.name === "SillyTavern System") {
+            return; // Only process AI generated non-system messages
+        }
+
+        const currentSettings = getActiveSettings(activeContext, modules.cleaner, modules.summarizer, modules.rpgh);
 
         try {
             isPipelineProcessing = true;
+            logTelemetry('pipeline', `Triggered by ${sourceName}. Starting sequential stages...`);
+
+            // Stage 1: Prose Cleaner
             if (!lastMsg.extra?.is_cleaned) {
                 try {
-                    await processProseCleanerStage(chat, lastMsg, currentSettings, (t) => estimateTokens(t, currentSettings), activeContext);
-                    await processSummarizerStage(chat, currentSettings, (t) => estimateTokens(t, currentSettings), () => executeFlushToLorebook(currentSettings, updateCount, activeContext), updateCount, activeContext);
-                } catch (proseError) {
-                    logTelemetry(`Prose/Summary sub-stage failed: ${proseError.message}`, 'error');
+                    logTelemetry('ProseCleaner', `Dispatching to cleaner stage for author: ${lastMsg.name}`);
+                    await modules.cleaner.processProseCleanerStage(
+                        chat,
+                        lastMsg,
+                        currentSettings,
+                        (text) => modules.token.estimateTokens(text, currentSettings),
+                        activeContext
+                    );
+                } catch (cleanerErr) {
+                    logTelemetry('ProseCleaner', `Stage failed: ${cleanerErr.message}`, 'error');
                 }
             }
+
+            // Stage 2: Summarizer
+            try {
+                logTelemetry('Summarizer', `Dispatching to summarizer stage...`);
+                await modules.summarizer.processSummarizerStage(
+                    chat,
+                    currentSettings,
+                    (text) => modules.token.estimateTokens(text, currentSettings),
+                    () => modules.flush.executeFlushToLorebook(currentSettings, () => updateCount(modules), activeContext),
+                    () => updateCount(modules),
+                    activeContext
+                );
+            } catch (summarizerErr) {
+                logTelemetry('Summarizer', `Stage failed: ${summarizerErr.message}`, 'error');
+            }
+
+            // Stage 3: RPG Engine Status Updates
             try {
                 if (activeContext && typeof activeContext.characters !== 'undefined') {
-                    await processRpgStateStage(chat, currentSettings, activeContext);
+                    logTelemetry('RPGHelper', `Dispatching turn to RPG state calculations...`);
+                    await modules.rpgh.processRpgStateStage(chat, currentSettings, activeContext);
                 }
-            } catch (rpgError) {
-                logTelemetry(`RPG Subsystem sync failed: ${rpgError.message}`, 'error');
+            } catch (rpgErr) {
+                logTelemetry('RPGHelper', `Stage failed: ${rpgErr.message}`, 'error');
             }
-            updateCount();
-        } catch (globalPipelineError) {
-            logTelemetry(`Critical Pipeline Exception: ${globalPipelineError.message}`, 'error');
+
+            updateCount(modules);
+            logTelemetry('pipeline', 'All pipeline execution stages completed successfully.', 'info');
+        } catch (globalErr) {
+            logTelemetry('pipeline', `Critical global execution failure: ${globalErr.message}`, 'error');
         } finally {
             isPipelineProcessing = false;
         }
     }
 
-    function updateCount() {
+    // Refresh UI display counts and variable textareas
+    function updateCount(modules) {
         const context = window.SillyTavern?.getContext();
         if (!context?.chat || !monitorElement) return;
-        const currentSettings = getActiveSettings(context);
+
+        const currentSettings = getActiveSettings(context, modules.cleaner, modules.summarizer, modules.rpgh);
         const totalMessages = context.chat.length;
         const summarizedCount = context.chat.filter(m => m.extra?.is_summarized).length;
-        
+
         monitorElement.innerHTML = `
             <div style="font-weight: bold; margin-bottom: 5px;">Cache Pool Status</div>
             <div>Active Pool: <b>${totalMessages}</b> / ${currentSettings.autoFlushThreshold || 0}</div>
             <div>Summarized: ${summarizedCount}</div>
         `;
-        
-        if (variableTextAreaRef) variableTextAreaRef.value = JSON.stringify(currentSettings.runtimeVariables, null, 4);
-        renderRpgSidebar(currentSettings, context);
-    }
 
-    // ========================================================================
-    // STATE MACHINE: INITIALIZATION & DATA FETCHING
-    // ========================================================================
-
-    function saveSettings() {
-        try {
-            if (typeof window.saveSettingsDebounced === 'function') {
-                window.saveSettingsDebounced();
-            }
-            const context = window.SillyTavern?.getContext();
-            if (context) renderRpgSidebar(context.extensionSettings['flush-monitor'], context);
-            updateCount();
-        } catch (err) {
-            console.error("SETTINGS WRITE FAULT:", err);
+        if (variableTextAreaRef) {
+            variableTextAreaRef.value = JSON.stringify(currentSettings.runtimeVariables, null, 4);
         }
+
+        modules.rpgui.renderRpgSidebar(currentSettings, context);
     }
-
-    function executeLevel2Fetch(settings) {
-        const rawProfiles = window.settings?.profiles || [];
-        
-        // Track the current selected profiles from the UI settings
-        const activeProfileIds = [
-            settings.selectedProfile,   // Summarizer Profile
-            settings.cleanerProfile,    // Cleaner Profile
-            settings.rpgWorkerProfile   // RPG Profile
-        ];
-
-        // Deduplicate and filter out empty values
-        const uniqueProfiles = [...new Set(activeProfileIds)].filter(id => id);
-
-        uniqueProfiles.forEach(profileId => {
-            console.log(`[UI Profile]: Beginning level 2 fetch for ${profileId}.`);
-            try {
-                const profileData = rawProfiles.find(p => (p.id === profileId || p.name === profileId));
-                if (profileData) {
-                    console.log(`[UI Profile]: Level 2 fetch for ${profileId} complete.`);
-                    // NOTE: Data injection for rpgh, cleaner, and summarizer will occur here in the future.
-                } else {
-                    console.log(`[UI Profile]: Level 2 fetch for ${profileId} failed.`);
-                }
-            } catch (err) {
-                console.log(`[UI Profile]: Level 2 fetch for ${profileId} failed.`);
-            }
-        });
-    }
-
-async function startLevel1Sequence(context) {
-    let attempts = 0;
-    const maxAttempts = 50;
-    const delayMs = 200;
 
     // Standardized profile layout formatter
     const formatProfiles = (profilesArray) => {
         const safeArray = (Array.isArray(profilesArray) && profilesArray.length > 0)
             ? profilesArray
             : [{ id: 'default', name: 'Default Profile' }];
-            
+
         return safeArray.map(p => ({
             id: p.id || p.name || 'default',
             name: p.name || p.id || 'Default Profile'
         }));
     };
 
-    async function pollForProfiles() {
-        attempts++;
-        console.log(`[UI Profile]: Beginning level 1 fetch (Attempt ${attempts}/${maxAttempts}).`);
+    // Level 2 updates: handles logging and validation of profile mappings
+    function executeLevel2Fetch(settings) {
+        logTelemetry('ProfileManager', 'Beginning level 2 connection profile validation check...');
+        const uniqueProfiles = [...new Set([
+            settings.selectedProfile,
+            settings.cleanerProfile,
+            settings.rpgWorkerProfile
+        ])].filter(id => id);
 
-        try {
-            let rawProfiles = null;
-
-            // 1. Pull the live execution environment context safely from SillyTavern
-            const stContext = getContext();
-            
-            // 2. Query actual connection profile presets via the Connection Manager Module
-            if (stContext?.ConnectionManagerRequestService) {
-                const service = stContext.ConnectionManagerRequestService;
-                rawProfiles = typeof service.getProfiles === 'function' 
-                    ? await service.getProfiles() 
-                    : (service.profiles || service.connectionProfiles);
+        uniqueProfiles.forEach(profileId => {
+            const profileData = internalProfilesRepository.find(p => p.id === profileId || p.name === profileId);
+            if (profileData) {
+                logTelemetry('ProfileManager', `Level 2 check: "${profileId}" mapped successfully to endpoint "${profileData.name}".`);
+            } else {
+                logTelemetry('ProfileManager', `Level 2 check: "${profileId}" could not be resolved in repository.`, 'warn');
             }
-
-            // 3. Resilient Secondary Fallback: Query SillyTavern's primary configuration block
-            // This safely bypasses uninitialized frontend UI service variables completely!
-            if (!rawProfiles || !Array.isArray(rawProfiles) || rawProfiles.length === 0) {
-                try {
-                    const apiResponse = await fetch('/api/settings/get', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({})
-                    });
-                    
-                    if (apiResponse.ok) {
-                        const data = await apiResponse.json();
-                        // Connection profiles sit inside the 'connection_profiles' parameter in user config schemas
-                        if (data && data.connection_profiles) {
-                            rawProfiles = data.connection_profiles;
-                        }
-                    }
-                } catch (apiErr) {
-                    console.log("[UI Profile]: API fallback fetch failed.");
-                }
-            }
-
-            // Success or failure execution threshold
-            if ((rawProfiles && rawProfiles.length > 0) || attempts >= maxAttempts) {
-                
-                if (!rawProfiles || !Array.isArray(rawProfiles) || rawProfiles.length === 0) {
-                    console.log("[UI Profile]: Level 1 fetch failed. Profiles could not be resolved.");
-                    console.log("[UI Profile]: Level 1 fetch failed. Reverting to default profile layout.");
-                    rawProfiles = [{ id: 'default', name: 'Default Profile' }];
-                }
-
-                // Prepare extension configuration state space
-                if (!context.extensionSettings['flush-monitor']) {
-                    context.extensionSettings['flush-monitor'] = {};
-                }
-                
-                const settings = Object.assign(
-                    {},
-                    defaultCleanerSettings,
-                    defaultSummarizerSettings,
-                    defaultRpgSettings,
-                    context.extensionSettings['flush-monitor']
-                );
-                context.extensionSettings['flush-monitor'] = settings;
-
-                // Reactive closure parsing layout wrapper utilizing the dedicated profile sources
-                const getAvailableProfiles = () => {
-                    const dynamicContext = getContext();
-                    const dynamicService = dynamicContext?.ConnectionManagerRequestService;
-                    const liveProfiles = dynamicService?.profiles || dynamicService?.connectionProfiles || rawProfiles;
-                    return formatProfiles(liveProfiles);
-                };
-
-                // CRITICAL FIX: Expose rawProfiles into your execution pipeline 
-                // so your Level 2 features can map configurations between 5000 and 5001.
-                context.allProfilesRepository = rawProfiles;
-
-                monitorElement = initializeExtensionUI(
-                    settings, 
-                    saveSettings, 
-                    () => executeFlushToLorebook(settings, updateCount, context), 
-                    getAvailableProfiles, 
-                    updateCount, 
-                    (el) => { variableTextAreaRef = el; }
-                );
-                
-                console.log("[UI Profile]: Level 1 fetch complete.");
-                console.log("[UI Profile]: Beginning level 1 settings update.");
-                
-                try {
-                    saveSettings();
-                    console.log("[UI Profile]: Level 1 settings update complete.");
-                } catch (err) {
-                    console.log("[UI Profile]: Level 1 settings update failed.");
-                }
-
-                const eventSource = window.SillyTavern?.eventSource || context?.eventSource;
-                if (eventSource) {
-                    eventSource.on('character_message_rendered', () => forceTriggerPipeline("EventBus:CHARACTER_MESSAGE_RENDERED"));
-                    eventSource.on('chat_changed', updateCount);
-                    eventSource.on('message_sent', updateCount);
-                    
-                    eventSource.on('settings_updated', async () => {
-                        updateCount();
-                        
-                        // Dynamically refresh profiles from memory or fallback api during settings events
-                        let freshRawProfiles = null;
-                        const updateContext = getContext();
-                        if (updateContext?.ConnectionManagerRequestService) {
-                            const upService = updateContext.ConnectionManagerRequestService;
-                            freshRawProfiles = upService.profiles || upService.connectionProfiles;
-                        }
-                        
-                        if (!freshRawProfiles) {
-                            try {
-                                const res = await fetch('/api/settings/get', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({})
-                                });
-                                if (res.ok) {
-                                    const d = await res.json();
-                                    freshRawProfiles = d?.connection_profiles;
-                                }
-                            } catch (e) {}
-                        }
-
-                        // Maintain persistent tracking reference inside active context engine
-                        if (freshRawProfiles && freshRawProfiles.length > 0) {
-                            context.allProfilesRepository = freshRawProfiles;
-                        }
-
-                        const freshProfilesList = formatProfiles(freshRawProfiles);
-                        updateProfileDropdowns(freshProfilesList, context.extensionSettings['flush-monitor']);
-                        executeLevel2Fetch(context.extensionSettings['flush-monitor']);
-                    });
-                }
-                
-                executeLevel2Fetch(settings);
-                isExtensionInitialized = true;
-                updateCount();
-                logTelemetry("Unified Extension Module Online.", "info");
-                return;
-            }
-
-        } catch (err) {
-            console.error("[UI Profile]: Error processing profile initialization pass:", err);
-        }
-
-        // Defer next polling check sequentially
-        setTimeout(pollForProfiles, delayMs);
+        });
     }
 
-    pollForProfiles();
-}
-  
-  
-  
-  // Master Bootloader
-    const bootInterval = setInterval(() => {
-        const context = window.SillyTavern?.getContext();
-        if (context && context.extensionSettings) {
-            clearInterval(bootInterval);
-            startLevel1Sequence(context);
+    // Saves extension settings to SillyTavern's persistent configuration store
+    async function saveSettings(modules) {
+        try {
+            if (typeof window.saveSettingsDebounced === 'function') {
+                window.saveSettingsDebounced();
+            }
+            const context = window.SillyTavern?.getContext();
+            if (context) {
+                modules.rpgui.renderRpgSidebar(context.extensionSettings['flush-monitor'], context);
+            }
+            updateCount(modules);
+        } catch (err) {
+            logTelemetry('ProfileManager', `Failed to write persistent settings: ${err.message}`, 'error');
         }
-    }, 200);
+    }
+
+    // Sequence polling checking for SillyTavern profile list arrays
+    async function sequenceProfileScanning() {
+        cycleAttempts++;
+        logTelemetry('ProfileManager', `Polling connection profiles from memory (${cycleAttempts}/${maxLifecycleRetries})...`);
+
+        try {
+            const modules = await loadExtensionModules();
+            const stContext = modules.extensions.getContext() || window.SillyTavern?.getContext();
+
+            if (stContext) {
+                let rawProfiles = null;
+
+                // 1. Resolve via connection manager request service
+                if (stContext.ConnectionManagerRequestService) {
+                    const service = stContext.ConnectionManagerRequestService;
+                    rawProfiles = typeof service.getProfiles === 'function'
+                        ? await service.getProfiles()
+                        : (service.profiles || service.connectionProfiles);
+                }
+
+                // 2. Resolve via api settings fallback
+                if (!rawProfiles || !Array.isArray(rawProfiles) || rawProfiles.length === 0) {
+                    try {
+                        const apiResponse = await fetch('/api/settings/get', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({})
+                        });
+
+                        if (apiResponse.ok) {
+                            const data = await apiResponse.json();
+                            if (data && data.connection_profiles) {
+                                rawProfiles = data.connection_profiles;
+                            }
+                        }
+                    } catch (apiErr) {
+                        logTelemetry('ProfileManager', `Settings fallback fetch failed: ${apiErr.message}`, 'warn');
+                    }
+                }
+
+                // If profiles have been acquired, initialize the UI layer
+                if ((rawProfiles && rawProfiles.length > 0) || cycleAttempts >= maxLifecycleRetries) {
+                    if (!rawProfiles || !Array.isArray(rawProfiles) || rawProfiles.length === 0) {
+                        logTelemetry('ProfileManager', 'Failed to resolve connection profiles. Defaulting layout.', 'warn');
+                        rawProfiles = [{ id: 'default', name: 'Default Profile' }];
+                    }
+
+                    internalProfilesRepository = rawProfiles;
+                    stContext.allProfilesRepository = rawProfiles; // Maintain reference inside the active context
+
+                    // Establish settings tree space
+                    if (!stContext.extensionSettings['flush-monitor']) {
+                        stContext.extensionSettings['flush-monitor'] = {};
+                    }
+
+                    const settings = Object.assign(
+                        {},
+                        modules.cleaner.defaultCleanerSettings,
+                        modules.summarizer.defaultSummarizerSettings,
+                        modules.rpgh.defaultRpgSettings,
+                        stContext.extensionSettings['flush-monitor']
+                    );
+                    stContext.extensionSettings['flush-monitor'] = settings;
+
+                    const getAvailableProfiles = () => {
+                        const liveContext = window.SillyTavern?.getContext();
+                        const liveService = liveContext?.ConnectionManagerRequestService;
+                        const liveProfiles = liveService?.profiles || liveService?.connectionProfiles || internalProfilesRepository;
+                        return formatProfiles(liveProfiles);
+                    };
+
+                    const targetParentPanel = document.getElementById('extensions_settings');
+                    if (!targetParentPanel) {
+                        logTelemetry('loader', 'Parent container #extensions_settings missing.', 'error');
+                        return;
+                    }
+
+                    monitorElement = modules.ui.initializeExtensionUI(
+                        settings,
+                        () => saveSettings(modules),
+                        () => modules.flush.executeFlushToLorebook(settings, () => updateCount(modules), stContext),
+                        getAvailableProfiles,
+                        () => updateCount(modules),
+                        (el) => { variableTextAreaRef = el; }
+                    );
+
+                    logTelemetry('ProfileManager', `Success! Repository loaded with ${internalProfilesRepository.length} profiles.`);
+                    await saveSettings(modules);
+
+                    // Setup system event routing
+                    const eventSource = window.SillyTavern?.eventSource || stContext?.eventSource;
+                    if (eventSource) {
+                        eventSource.on('character_message_rendered', () => executeExtensionPipeline('EventBus:CHARACTER_MESSAGE_RENDERED'));
+                        eventSource.on('chat_changed', () => updateCount(modules));
+                        eventSource.on('message_sent', () => updateCount(modules));
+
+                        eventSource.on('settings_updated', async () => {
+                            updateCount(modules);
+
+                            let freshProfiles = null;
+                            const updateContext = window.SillyTavern?.getContext();
+                            if (updateContext?.ConnectionManagerRequestService) {
+                                const upService = updateContext.ConnectionManagerRequestService;
+                                freshProfiles = upService.profiles || upService.connectionProfiles;
+                            }
+
+                            if (!freshProfiles) {
+                                try {
+                                    const res = await fetch('/api/settings/get', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({})
+                                    });
+                                    if (res.ok) {
+                                        const d = await res.json();
+                                        freshProfiles = d?.connection_profiles;
+                                    }
+                                } catch (e) {}
+                            }
+
+                            if (freshProfiles && freshProfiles.length > 0) {
+                                internalProfilesRepository = freshProfiles;
+                                updateContext.allProfilesRepository = freshProfiles;
+                            }
+
+                            const freshProfilesList = formatProfiles(internalProfilesRepository);
+                            modules.ui.updateProfileDropdowns(freshProfilesList, updateContext.extensionSettings['flush-monitor']);
+                            executeLevel2Fetch(updateContext.extensionSettings['flush-monitor']);
+                        });
+                    }
+
+                    executeLevel2Fetch(settings);
+                    isExtensionInitialized = true;
+                    updateCount(modules);
+                    logTelemetry('loader', 'Unified Extension Module Online.', 'info');
+                    return; // Scanning loop complete
+                }
+            }
+        } catch (err) {
+            logTelemetry('loader', `Critical lifecycle setup error: ${err.message}`, 'error');
+        }
+
+        if (cycleAttempts < maxLifecycleRetries) {
+            setTimeout(sequenceProfileScanning, 250);
+        } else {
+            logTelemetry('ProfileManager', 'Polling timed out. Connection profiles could not be loaded.', 'warn');
+        }
+    }
+
+    $(document).ready(() => {
+        sequenceProfileScanning();
+    });
 
 })();

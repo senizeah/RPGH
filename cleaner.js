@@ -71,21 +71,32 @@ export function runStylisticPass(text, rawRulesString) {
     return result;
 }
 
-async function executeCleanerWorker(profileName, systemPrompt, userContent, context) {
-    const cleanPrompt = systemPrompt.replace(/"/g, '\\"');
-    const cleanContent = userContent.replace(/"/g, '\\"');
-    const macroString = `/profile-genstream "${profileName}" "${cleanPrompt}" "${cleanContent}"`;
+async function executeCleanerWorker(profileConfig, systemPrompt, userContent, context) {
+    console.log(`[ProseCleaner] Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
+    
+    const finalizedPrompt = `### Instruction:\n${systemPrompt}\n\n${userContent}\n\n### Response:\n`;
+
+    const payload = {
+        prompt: finalizedPrompt,
+        api_type: profileConfig.api || profileConfig.api_type || profileConfig.apiType,
+        api_server: profileConfig.url || profileConfig.custom_url,
+        api_key: profileConfig.apiKey || profileConfig.api_key,
+        model: profileConfig.model || profileConfig.active_model,
+        preset: profileConfig.preset || null,
+        is_background_task: true,
+        bypass_global_state: true
+    };
 
     try {
-        console.log(`[Cleaner Engine] Dispatching fire-and-forget to profile: "${profileName}"`);
-        const executeCmd = window.SillyTavern?.executeSlashCommands || context?.executeSlashCommands || window.executeSlashCommands;
-        if (typeof executeCmd === 'function') {
-            executeCmd(macroString);
-        } else {
-            throw new Error("No executeSlashCommands function available on context or window.");
+        const requestSecure = window.SillyTavern?.requestSecure || context?.requestSecure;
+        if (typeof requestSecure !== 'function') {
+            throw new Error("SillyTavern.requestSecure is not available.");
         }
+        const response = await requestSecure('/api/textgen/generate', payload);
+        return response?.text || response;
     } catch (err) {
-        cmdLog('cleaner_worker', `Execution fault: ${err.message}`, 'error');
+        console.error(`[ProseCleaner] Secure API processing failed:`, err);
+        throw err;
     }
 }
 
@@ -123,34 +134,38 @@ export async function processProseCleanerStage(chat, immediateLastMsg, settings,
                           (settings.cleanerEnabled && styleAnalysis.hasMatches);
 
     if (shouldInvokeLLM) {
-        const profiles = window.SillyTavern?.settings?.connectionManager?.profiles || [];
-        const profileObj = profiles.find(p => p.id === settings.cleanerProfile || p.name === settings.cleanerProfile);
-        const profileName = profileObj ? profileObj.name : settings.cleanerProfile;
+        const rawProfiles = context?.allProfilesRepository || window.SillyTavern?.getContext()?.allProfilesRepository || [];
+        const profileObj = rawProfiles.find(p => p.id === settings.cleanerProfile || p.name === settings.cleanerProfile);
 
-        console.log(`[Cleaner Engine] Mapping ID ${settings.cleanerProfile} to Name: "${profileName}"`);
+        if (!profileObj) {
+            console.warn(`[ProseCleaner] Targeted connection profile (${settings.cleanerProfile}) missing from repository. Skipping LLM cleanup.`);
+            immediateLastMsg.mes = modifiedText;
+            immediateLastMsg.extra = immediateLastMsg.extra || {};
+            immediateLastMsg.extra.is_cleaned = true;
+            return;
+        }
 
-        executeCleanerWorker(profileName, settings.cleanerPrompt, modifiedText, context);
-        
+        console.log(`[ProseCleaner] Mapping profile ID ${settings.cleanerProfile} to config: "${profileObj.name}"`);
+
+        try {
+            const cleanedResult = await executeCleanerWorker(profileObj, settings.cleanerPrompt, modifiedText, context);
+            if (cleanedResult) {
+                console.log("[ProseCleaner] Successfully received LLM-cleaned text.");
+                immediateLastMsg.mes = cleanedResult.trim();
+            } else {
+                console.warn("[ProseCleaner] LLM-cleaned text was empty. Retaining original modified text.");
+                immediateLastMsg.mes = modifiedText;
+            }
+        } catch (err) {
+            console.error(`[ProseCleaner] Direct API cleaning failed: ${err.message}. Retaining original modified text.`);
+            immediateLastMsg.mes = modifiedText;
+        }
+
         immediateLastMsg.extra = immediateLastMsg.extra || {};
-        immediateLastMsg.extra.is_cleaning = true;
+        immediateLastMsg.extra.is_cleaned = true;
     } else {
         immediateLastMsg.mes = modifiedText;
         immediateLastMsg.extra = immediateLastMsg.extra || {};
         immediateLastMsg.extra.is_cleaned = true;
     }
 }
-
-window.SillyTavern?.eventSource?.on('background_gen_finished', (data) => {
-    if (!data?.text) return;
-    
-    const context = window.SillyTavern?.getContext();
-    const lastMsg = context?.chat?.[context.chat.length - 1];
-    
-    if (lastMsg && lastMsg.extra?.is_cleaning) {
-        console.log("[Cleaner Engine] Applying LLM-cleaned text to message.");
-        lastMsg.mes = data.text.trim();
-        lastMsg.extra.is_cleaning = false;
-        lastMsg.extra.is_cleaned = true;
-        window.SillyTavern?.updateChatDisplay?.();
-    }
-});
