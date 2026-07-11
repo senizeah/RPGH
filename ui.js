@@ -290,7 +290,7 @@ function buildProseCleanerSection(container, settings, saveSettings, populatePro
  * Form hooks orchestrating ledger mechanics, screen overlays, and state matrices.
  * ----------------------------------------------------------------------------
  */
-function buildRpgEngineSection(container, settings, saveSettings, currentAvailableProfiles, onSidebarConfigChanged, getVariableEditAreaRef) {
+function buildRpgEngineSection(container, settings, saveSettings, populateProfileSelect, onSidebarConfigChanged, getVariableEditAreaRef) {
     const subheaderRpg = document.createElement('div');
     subheaderRpg.innerText = '📊 Automated RPG State Engine';
     subheaderRpg.style = 'margin: 15px 0 5px 0; font-weight: bold; color: #a78bfa; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
@@ -329,14 +329,8 @@ function buildRpgEngineSection(container, settings, saveSettings, currentAvailab
     const rpgProfileSelectElement = document.createElement('select');
     rpgProfileSelectElement.className = 'text_display input_text';
     rpgProfileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
-    // This will be populated later by a callback
-    // availableProfiles.forEach(prof => {
-    //     const opt = document.createElement('option');
-    //     opt.value = prof.id;
-    //     opt.innerText = prof.name;
-    //     if (settings.rpgWorkerProfile === prof.id || settings.rpgWorkerProfile === prof.name) opt.selected = true;
-    //     rpgProfileSelectElement.appendChild(opt);
-    // });
+    
+    populateProfileSelect(rpgProfileSelectElement, 'rpgWorkerProfile'); // Populate now
 	rpgProfileSelectElement.onchange = async () => {
 		settings.rpgWorkerProfile = rpgProfileSelectElement.value;
 		await saveSettings();
