@@ -78,7 +78,12 @@ async function executeCleanerWorker(profileName, systemPrompt, userContent, cont
 
     try {
         console.log(`[Cleaner Engine] Dispatching fire-and-forget to profile: "${profileName}"`);
-        window.SillyTavern.executeSlashCommands(macroString);
+        const executeCmd = window.SillyTavern?.executeSlashCommands || context?.executeSlashCommands || window.executeSlashCommands;
+        if (typeof executeCmd === 'function') {
+            executeCmd(macroString);
+        } else {
+            throw new Error("No executeSlashCommands function available on context or window.");
+        }
     } catch (err) {
         cmdLog('cleaner_worker', `Execution fault: ${err.message}`, 'error');
     }

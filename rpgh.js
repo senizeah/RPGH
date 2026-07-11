@@ -140,7 +140,12 @@ async function executeRpgWorker(profileName, systemPrompt, userContent, context)
 
         try {
             console.log(`[RPG Engine] [EXEC] Sending command: ${macroString}`);
-            window.SillyTavern.executeSlashCommands(macroString);
+            const executeCmd = window.SillyTavern?.executeSlashCommands || context?.executeSlashCommands || window.executeSlashCommands;
+            if (typeof executeCmd === 'function') {
+                executeCmd(macroString);
+            } else {
+                throw new Error("No executeSlashCommands function available on context or window.");
+            }
         } catch (err) {
             console.error("[RPG Engine] [FAIL] Dispatch failed:", err);
             clearTimeout(safetyTimeout);
