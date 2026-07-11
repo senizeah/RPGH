@@ -131,7 +131,7 @@ import { estimateTokens } from './token.js';
             }
         }
 
-        monitorElement = initializeExtensionUI(
+        let uiControls = initializeExtensionUI(
             context.extensionSettings['flush-monitor'], 
             saveSettings, 
             () => executeFlushToLorebook(context.extensionSettings['flush-monitor'], updateCount, context), 
@@ -139,6 +139,7 @@ import { estimateTokens } from './token.js';
             updateCount, 
             (el) => { variableTextAreaRef = el; }
         );
+        monitorElement = uiControls.monitorElement;
         console.log(`[Flush-Monitor:ORCHESTRATOR] Initializing UI with profile getter. It will fetch profiles dynamically.`);
 
         // NATIVE 1.18.0 LIFE-CYCLE EVENTS: Replaces DOM Mutation and Network Observers completely
