@@ -498,19 +498,13 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
     const formContainer = document.createElement('div');
     formContainer.style = 'display: flex; flex-direction: column; gap: 10px; font-size: 12px;';
 
-// ⬇️ Make the function async ⬇️
-    const populateProfileSelect = async (selectElement, settingsKey) => {
-        // Clear existing options and add a temporary loading state
+// ⬇️ Reverted to standard synchronous execution ⬇️
+    const populateProfileSelect = (selectElement, settingsKey) => {
+        // Clear existing options
         selectElement.innerHTML = '';
-        const loadingOpt = document.createElement('option');
-        loadingOpt.innerText = 'Loading...';
-        selectElement.appendChild(loadingOpt);
 
-        // ⬇️ Await the API fetch ⬇️
-        const profiles = await getAvailableProfilesCallback(); 
+        const profiles = getAvailableProfilesCallback(); 
         
-        selectElement.innerHTML = ''; // Clear loading state once fetched
-
         // Add a default "None" option if no profiles are available or selected
         if (!profiles || profiles.length === 0) {
             const defaultOpt = document.createElement('option');
