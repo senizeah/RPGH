@@ -1,3 +1,5 @@
+import { logTelemetry } from './index.js';
+
 export const defaultCleanerSettings = {
     cleanerEnabled: true,
     pruneEnabled: true,
@@ -6,15 +8,6 @@ export const defaultCleanerSettings = {
     cleanerPrompt: "You are an expert copy editor. Rewrite the provided text to remove repetitive 'AI-isms', overly flowery language, and unnatural phrasing. Maintain the exact original meaning, facts, formatting, and character voice. Return ONLY the edited text with no additional commentary.",    
     customCleanFilters: ["(?:In conclusion|To summarize|Ultimately),? .+"].join("\n"),
 };
-
-async function cmdLog(tag, message, level = 'info') {
-    const logPrefix = `[Flush-Monitor:${tag.toUpperCase()}]`;
-    const formattedMessage = typeof message === 'object' ? JSON.stringify(message, null, 2) : message;
-    
-    if (level === 'error') console.error(`%c${logPrefix} ${formattedMessage}`, "color: #ef4444; font-weight: bold;");
-    else if (level === 'warn') console.warn(`%c${logPrefix} ${formattedMessage}`, "color: #f59e0b;");
-    else console.log(`%c${logPrefix} ${formattedMessage}`, "color: #10b981; font-weight: bold;");
-}
 
 export function trimUnfinishedSentence(text) {
     if (!text) return text;
@@ -63,7 +56,7 @@ export function runStylisticPass(text, rawRulesString) {
                 result.text = result.text.replace(regex, '');
             }
         } catch (e) {
-            cmdLog('regex_parser', `Heuristic matching processing failure on pattern "${pattern}": ${e.message}`, 'error');
+            logTelemetry('regex_parser', `Heuristic matching processing failure on pattern "${pattern}": ${e.message}`, 'error');
         }
     });
 
@@ -72,7 +65,7 @@ export function runStylisticPass(text, rawRulesString) {
 }
 
 async function executeCleanerWorker(profileConfig, systemPrompt, userContent, context) {
-    console.log(`[ProseCleaner] Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
+    logTelemetry('ProseCleaner', `Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
     
     const finalizedPrompt = `### Instruction:\n${systemPrompt}\n\n${userContent}\n\n### Response:\n`;
 
@@ -95,13 +88,13 @@ async function executeCleanerWorker(profileConfig, systemPrompt, userContent, co
         const response = await requestSecure('/api/textgen/generate', payload);
         return response?.text || response;
     } catch (err) {
-        console.error(`[ProseCleaner] Secure API processing failed:`, err);
+        logTelemetry('ProseCleaner', `Secure API processing failed: ${err.message}`, 'error');
         throw err;
     }
 }
 
 export async function processProseCleanerStage(chat, immediateLastMsg, settings, estimateTokensCb, context) {
-    await cmdLog('cleaner_pipeline', `Entering Prose Cleaner Pipeline Stage for Author: [${immediateLastMsg.name}]`, 'info');
+    await logTelemetry('cleaner_pipeline', `Entering Prose Cleaner Pipeline Stage for Author: [${immediateLastMsg.name}]`, 'info');
     
     if (!immediateLastMsg.mes) {
         immediateLastMsg.extra = immediateLastMsg.extra || {};
@@ -138,26 +131,26 @@ export async function processProseCleanerStage(chat, immediateLastMsg, settings,
         const profileObj = rawProfiles.find(p => p.id === settings.cleanerProfile || p.name === settings.cleanerProfile);
 
         if (!profileObj) {
-            console.warn(`[ProseCleaner] Targeted connection profile (${settings.cleanerProfile}) missing from repository. Skipping LLM cleanup.`);
+            logTelemetry('ProseCleaner', `Targeted connection profile (${settings.cleanerProfile}) missing from repository. Skipping LLM cleanup.`, 'warn');
             immediateLastMsg.mes = modifiedText;
             immediateLastMsg.extra = immediateLastMsg.extra || {};
             immediateLastMsg.extra.is_cleaned = true;
             return;
         }
 
-        console.log(`[ProseCleaner] Mapping profile ID ${settings.cleanerProfile} to config: "${profileObj.name}"`);
+        logTelemetry('ProseCleaner', `Mapping profile ID ${settings.cleanerProfile} to config: "${profileObj.name}"`);
 
         try {
             const cleanedResult = await executeCleanerWorker(profileObj, settings.cleanerPrompt, modifiedText, context);
             if (cleanedResult) {
-                console.log("[ProseCleaner] Successfully received LLM-cleaned text.");
+                logTelemetry('ProseCleaner', "Successfully received LLM-cleaned text.");
                 immediateLastMsg.mes = cleanedResult.trim();
             } else {
-                console.warn("[ProseCleaner] LLM-cleaned text was empty. Retaining original modified text.");
+                logTelemetry('ProseCleaner', "LLM-cleaned text was empty. Retaining original modified text.", 'warn');
                 immediateLastMsg.mes = modifiedText;
             }
         } catch (err) {
-            console.error(`[ProseCleaner] Direct API cleaning failed: ${err.message}. Retaining original modified text.`);
+            logTelemetry('ProseCleaner', `Direct API cleaning failed: ${err.message}. Retaining original modified text.`, 'error');
             immediateLastMsg.mes = modifiedText;
         }
 
