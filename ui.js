@@ -573,7 +573,7 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
             ].filter(Boolean); // Filter out nulls
 
             profileSelectElements.forEach(selectElement => {
-                const settingsKey = selectElement.dataset.settingsKey;
+                const settingsKey = selectElement.dataset.settingKey;
                 populateProfileSelect(selectElement, settingsKey);
             });
         }
