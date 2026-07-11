@@ -342,13 +342,14 @@ function buildRpgEngineSection(container, settings, saveSettings, currentAvailab
     const rpgProfileSelectElement = document.createElement('select');
     rpgProfileSelectElement.className = 'text_display input_text';
     rpgProfileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
-    availableProfiles.forEach(prof => {
-        const opt = document.createElement('option');
-        opt.value = prof.id;
-        opt.innerText = prof.name;
-        if (settings.rpgWorkerProfile === prof.id || settings.rpgWorkerProfile === prof.name) opt.selected = true;
-        rpgProfileSelectElement.appendChild(opt);
-    });
+    // This will be populated later by a callback
+    // availableProfiles.forEach(prof => {
+    //     const opt = document.createElement('option');
+    //     opt.value = prof.id;
+    //     opt.innerText = prof.name;
+    //     if (settings.rpgWorkerProfile === prof.id || settings.rpgWorkerProfile === prof.name) opt.selected = true;
+    //     rpgProfileSelectElement.appendChild(opt);
+    // });
 	rpgProfileSelectElement.onchange = async () => {
 		settings.rpgWorkerProfile = rpgProfileSelectElement.value;
 		await saveSettings();
