@@ -12,14 +12,6 @@
  * Global design structures and boilerplate layout generators.
  * ----------------------------------------------------------------------------
  */
-
-/**
- * Generates a unified settings form row layout matching SillyTavern's aesthetics.
- * @param {string} labelText - Text to display as form row title
- * @param {HTMLElement} inputElement - Input element to mount right side
- * @param {string} [description=""] - Optional low-emphasis italic descriptor below the row
- * @returns {HTMLDivElement} Consolidated form flex-wrapper wrapper element
- */
 function createSettingRow(labelText, inputElement, description = '') {
     const wrapper = document.createElement('div');
     wrapper.style = 'display: flex; flex-direction: column; gap: 3px;';
@@ -44,11 +36,9 @@ function createSettingRow(labelText, inputElement, description = '') {
     return wrapper;
 }
 
-
 /**
  * ----------------------------------------------------------------------------
  * SUBSYSTEM: CORE STORAGE & SLIDING CACHE LIMITS
- * Elements governing baseline memory thresholds and token calculations.
  * ----------------------------------------------------------------------------
  */
 function buildCoreSlidingCacheSection(container, settings, saveSettings, onThresholdChange) {
@@ -101,11 +91,9 @@ function buildCoreSlidingCacheSection(container, settings, saveSettings, onThres
     container.appendChild(createSettingRow('Words Per Token Ratio', inputWordsPerToken));
 }
 
-
 /**
  * ----------------------------------------------------------------------------
  * SUBSYSTEM: FLUSH & ARCHIVAL ROTATION SYSTEM
- * Configuration fields deciding how and where historical lore blocks are committed.
  * ----------------------------------------------------------------------------
  */
 function buildFlushArchivalSection(container, settings, saveSettings) {
@@ -140,26 +128,29 @@ function buildFlushArchivalSection(container, settings, saveSettings) {
     container.appendChild(createSettingRow('Target World Info Lorebook Name', inputLorebook));
 }
 
-
 /**
  * ----------------------------------------------------------------------------
  * SUBSYSTEM: BACKGROUND SUMMARIZER ENGINE
- * Input nodes dictating API worker allocation and system instructional mapping.
  * ----------------------------------------------------------------------------
  */
-function buildSummarizerSection(container, settings, saveSettings, populateProfileSelect) {
+function buildSummarizerSection(container, settings, saveSettings, availableProfiles) {
     const subheaderNet = document.createElement('div');
     subheaderNet.innerText = '⚙️ Summarizer Worker Routing';
     subheaderNet.style = 'margin: 10px 0 5px 0; font-weight: bold; color: #fbbf24; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
     container.appendChild(subheaderNet);
 
     const profileSelectElement = document.createElement('select');
-    profileSelectElement.dataset.settingKey = 'selectedProfile';
+    profileSelectElement.id = 'flush_monitor_summarizer_profile'; // ID added for dynamic binding
     profileSelectElement.className = 'text_display input_text';
     profileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
-    populateProfileSelect(profileSelectElement, 'selectedProfile'); // Populate now
-    
+    availableProfiles.forEach(prof => {
+        const opt = document.createElement('option');
+        opt.value = prof.id;
+        opt.innerText = prof.name;
+        if (settings.selectedProfile === prof.id || settings.selectedProfile === prof.name) opt.selected = true;
+        profileSelectElement.appendChild(opt);
+    });
     profileSelectElement.onchange = async () => {
         settings.selectedProfile = profileSelectElement.value;
         await saveSettings();
@@ -196,14 +187,12 @@ function buildSummarizerSection(container, settings, saveSettings, populateProfi
     container.appendChild(promptWrapper);
 }
 
-
 /**
  * ----------------------------------------------------------------------------
  * SUBSYSTEM: PROSE CLEANER SUB-PIPELINE
- * Interface elements handling stylistic/heuristic regular expressions and detox prompts.
  * ----------------------------------------------------------------------------
  */
-function buildProseCleanerSection(container, settings, saveSettings, populateProfileSelect) {
+function buildProseCleanerSection(container, settings, saveSettings, availableProfiles) {
     const subheaderCleaner = document.createElement('div');
     subheaderCleaner.innerText = '🧹 AI Prose Cleaner & Formatting';
     subheaderCleaner.style = 'margin: 15px 0 5px 0; font-weight: bold; color: #38bdf8; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
@@ -237,15 +226,21 @@ function buildProseCleanerSection(container, settings, saveSettings, populatePro
     container.appendChild(createSettingRow('Destructively Strip Regex Matches Locally', checkRegexStyle));
 
     const cleanerProfileSelectElement = document.createElement('select');
-    cleanerProfileSelectElement.dataset.settingKey = 'cleanerProfile';
+    cleanerProfileSelectElement.id = 'flush_monitor_cleaner_profile'; // ID added for dynamic binding
     cleanerProfileSelectElement.className = 'text_display input_text';
     cleanerProfileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
-    populateProfileSelect(cleanerProfileSelectElement, 'cleanerProfile'); // Populate now
-	cleanerProfileSelectElement.onchange = async () => {
-		settings.cleanerProfile = cleanerProfileSelectElement.value;
-		await saveSettings();
-	};
+    availableProfiles.forEach(prof => {
+        const opt = document.createElement('option');
+        opt.value = prof.id;
+        opt.innerText = prof.name;
+        if (settings.cleanerProfile === prof.id || settings.cleanerProfile === prof.name) opt.selected = true;
+        cleanerProfileSelectElement.appendChild(opt);
+    });
+    cleanerProfileSelectElement.onchange = async () => {
+        settings.cleanerProfile = cleanerProfileSelectElement.value;
+        await saveSettings();
+    };
     container.appendChild(createSettingRow('Cleaner Worker Profile Alias', cleanerProfileSelectElement));
 
     const filterArea = document.createElement('textarea');
@@ -285,14 +280,12 @@ function buildProseCleanerSection(container, settings, saveSettings, populatePro
     container.appendChild(cleanerPromptWrapper);
 }
 
-
 /**
  * ----------------------------------------------------------------------------
  * SUBSYSTEM: AUTOMATED RPG STATE ENGINE
- * Form hooks orchestrating ledger mechanics, screen overlays, and state matrices.
  * ----------------------------------------------------------------------------
  */
-function buildRpgEngineSection(container, settings, saveSettings, populateProfileSelect, onSidebarConfigChanged, getVariableEditAreaRef) {
+function buildRpgEngineSection(container, settings, saveSettings, availableProfiles, onSidebarConfigChanged, getVariableEditAreaRef) {
     const subheaderRpg = document.createElement('div');
     subheaderRpg.innerText = '📊 Automated RPG State Engine';
     subheaderRpg.style = 'margin: 15px 0 5px 0; font-weight: bold; color: #a78bfa; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
@@ -329,15 +322,21 @@ function buildRpgEngineSection(container, settings, saveSettings, populateProfil
     container.appendChild(createSettingRow('Live Character Status Overlay View', posSelect, 'Places a floating overlay panel inside the viewport tracking data fields.'));
 
     const rpgProfileSelectElement = document.createElement('select');
-    rpgProfileSelectElement.dataset.settingKey = 'rpgWorkerProfile';
+    rpgProfileSelectElement.id = 'flush_monitor_rpg_profile'; // ID added for dynamic binding
     rpgProfileSelectElement.className = 'text_display input_text';
     rpgProfileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
-    populateProfileSelect(rpgProfileSelectElement, 'rpgWorkerProfile'); // Populate now
-	rpgProfileSelectElement.onchange = async () => {
-		settings.rpgWorkerProfile = rpgProfileSelectElement.value;
-		await saveSettings();
-	};
+    availableProfiles.forEach(prof => {
+        const opt = document.createElement('option');
+        opt.value = prof.id;
+        opt.innerText = prof.name;
+        if (settings.rpgWorkerProfile === prof.id || settings.rpgWorkerProfile === prof.name) opt.selected = true;
+        rpgProfileSelectElement.appendChild(opt);
+    });
+    rpgProfileSelectElement.onchange = async () => {
+        settings.rpgWorkerProfile = rpgProfileSelectElement.value;
+        await saveSettings();
+    };
     container.appendChild(createSettingRow('RPG State Engine Worker Profile', rpgProfileSelectElement));
 
     const inputRpgLorebook = document.createElement('input');
@@ -391,15 +390,12 @@ function buildRpgEngineSection(container, settings, saveSettings, populateProfil
     varWrapper.appendChild(variableEditArea);
     container.appendChild(varWrapper);
 
-    // Pass the text area pointer back to the host via callback closure
     getVariableEditAreaRef(variableEditArea);
 }
-
 
 /**
  * ----------------------------------------------------------------------------
  * SUBSYSTEM: ADVANCED INJECTION GUARDRAILS
- * Security wrappers preventing history contamination or layout destruction.
  * ----------------------------------------------------------------------------
  */
 function buildGuardrailsSection(container, settings, saveSettings) {
@@ -427,40 +423,14 @@ function buildGuardrailsSection(container, settings, saveSettings) {
     container.appendChild(createSettingRow('Enable Lorebook Vector Deduplication', checkLoreGuard));
 }
 
-
 /**
  * ----------------------------------------------------------------------------
  * MAIN MODULE ORCHESTRATOR
- * Compiles and maps sub-render runs into the SillyTavern extension grid panel.
  * ----------------------------------------------------------------------------
  */
-
-/**
- * Initializes the full layout panel for the extension inside the configuration column.
- * @param {object} settings - Central runtime extension configuration state
- * @param {function} saveSettings - Async function pointer executing serialization
- * @param {function} executeManualFlush - Execution call handler for flash cycles
- * @param {function} getAvailableProfiles - Retrieval mapping loop for API endpoints
- * @param {function} onUiUpdateNeeded - Lifecycle execution loop sync callback
- * @param {function} getVariableEditAreaRef - Returns variable text field pointer to index.js
- * @returns {HTMLDivElement|null} Pointer to live metric container or null if already injected
- */
-
-/**
- * ----------------------------------------------------------------------------
- * MAIN MODULE ORCHESTRATOR
- * Compiles and maps sub-render runs into the SillyTavern extension grid panel.
- * ----------------------------------------------------------------------------
- */
-export function initializeExtensionUI(settings, saveSettings, executeManualFlush, getAvailableProfilesCallback, onUiUpdateNeeded, getVariableEditAreaRef) {
+export function initializeExtensionUI(settings, saveSettings, executeManualFlush, getAvailableProfiles, onUiUpdateNeeded, getVariableEditAreaRef) {
     const panel = document.getElementById('extensions_settings2');
-    if (!panel) return null;
-
-    // Clear out duplicate broken wrapper remnants left behind by ST layout redraws
-    const oldPanel = document.getElementById('flush-monitor-panel');
-    if (oldPanel) {
-        oldPanel.remove();
-    }
+    if (!panel || document.getElementById('flush-monitor-panel')) return null;
 
     const mainWrapper = document.createElement('div');
     mainWrapper.id = 'flush-monitor-panel';
@@ -498,81 +468,57 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
     const formContainer = document.createElement('div');
     formContainer.style = 'display: flex; flex-direction: column; gap: 10px; font-size: 12px;';
 
-// ⬇️ Reverted to standard synchronous execution ⬇️
-    const populateProfileSelect = (selectElement, settingsKey) => {
-        // Clear existing options
-        selectElement.innerHTML = '';
+    const profiles = getAvailableProfiles();
 
-        const profiles = getAvailableProfilesCallback(); 
-        
-        // Add a default "None" option if no profiles are available or selected
-        if (!profiles || profiles.length === 0) {
-            const defaultOpt = document.createElement('option');
-            defaultOpt.value = 'default';
-            defaultOpt.innerText = 'Default Profile Worker';
-            selectElement.appendChild(defaultOpt);
-        }
-
-        profiles.forEach(prof => {
-            const opt = document.createElement('option');
-            opt.value = prof.id;
-            opt.innerText = prof.name;
-            if (settings[settingsKey] === prof.id || settings[settingsKey] === prof.name) {
-                opt.selected = true;
-            }
-            selectElement.appendChild(opt);
-        });
-
-        // Fallbacks
-        if (!selectElement.value && settings[settingsKey]) {
-            selectElement.value = settings[settingsKey];
-        }
-        if (!selectElement.value && profiles.length > 0) {
-            selectElement.value = profiles[0].id;
-            settings[settingsKey] = profiles[0].id;
-        } else if (!selectElement.value && profiles.length === 0) {
-            selectElement.value = 'default';
-            settings[settingsKey] = 'default';
-        }
-    };
-
-    // Fetch live reference pointer directly from global context map
-    const liveSettingsRef = window.SillyTavern.getContext().extensionSettings['flush-monitor'] || settings;
-
-    buildCoreSlidingCacheSection(formContainer, liveSettingsRef, saveSettings, onUiUpdateNeeded);
-    buildFlushArchivalSection(formContainer, liveSettingsRef, saveSettings);
-    buildSummarizerSection(formContainer, liveSettingsRef, saveSettings, populateProfileSelect);
-    buildProseCleanerSection(formContainer, liveSettingsRef, saveSettings, populateProfileSelect);
+    buildCoreSlidingCacheSection(formContainer, settings, saveSettings, onUiUpdateNeeded);
+    buildFlushArchivalSection(formContainer, settings, saveSettings);
+    buildSummarizerSection(formContainer, settings, saveSettings, profiles);
+    buildProseCleanerSection(formContainer, settings, saveSettings, profiles);
     
-    buildRpgEngineSection(formContainer, liveSettingsRef, saveSettings, populateProfileSelect, () => {
+    buildRpgEngineSection(formContainer, settings, saveSettings, profiles, () => {
         window.dispatchEvent(new CustomEvent('flush-monitor:sidebar-config-changed'));
     }, getVariableEditAreaRef);
     
-    buildGuardrailsSection(formContainer, liveSettingsRef, saveSettings);
+    buildGuardrailsSection(formContainer, settings, saveSettings);
 
     drawerContent.appendChild(formContainer);
+
     inlineDrawer.appendChild(drawerHeader);
     inlineDrawer.appendChild(drawerContent);
     mainWrapper.appendChild(inlineDrawer);
 
     panel.appendChild(mainWrapper);
 
-    // Return the monitor element and a function to update profile dropdowns
-    return {
-        monitorElement: monitorElement,
-        updateProfileDropdowns: () => {
-            // Re-populate all profile dropdowns
-            const liveSettingsRef = window.SillyTavern.getContext().extensionSettings['flush-monitor'] || settings;
-            const profileSelectElements = [
-                document.querySelector('#flush-monitor-panel select[data-setting-key="selectedProfile"]'),
-                document.querySelector('#flush-monitor-panel select[data-setting-key="cleanerProfile"]'),
-                document.querySelector('#flush-monitor-panel select[data-setting-key="rpgWorkerProfile"]')
-            ].filter(Boolean); // Filter out nulls
+    return monitorElement;
+}
 
-            profileSelectElements.forEach(selectElement => {
-                const settingsKey = selectElement.dataset.settingKey;
-                populateProfileSelect(selectElement, settingsKey);
-            });
-        }
-    };
+/**
+ * Function called externally to clear and re-populate the `<select>` inputs 
+ * safely without rebuilding the entire interface DOM.
+ */
+export function updateProfileDropdowns(profiles, settings) {
+    const selects = [
+        { id: 'flush_monitor_summarizer_profile', settingKey: 'selectedProfile' },
+        { id: 'flush_monitor_cleaner_profile', settingKey: 'cleanerProfile' },
+        { id: 'flush_monitor_rpg_profile', settingKey: 'rpgWorkerProfile' }
+    ];
+
+    selects.forEach(({ id, settingKey }) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        
+        el.innerHTML = ''; // Wipe existing options
+        
+        profiles.forEach(prof => {
+            const opt = document.createElement('option');
+            opt.value = prof.id || prof.name;
+            opt.innerText = prof.name;
+            
+            // Re-apply the stored selected value
+            if (settings[settingKey] === opt.value || settings[settingKey] === prof.name) {
+                opt.selected = true;
+            }
+            el.appendChild(opt);
+        });
+    });
 }

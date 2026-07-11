@@ -1,0 +1,9 @@
+{
+    "id": "Connections",
+    "name": "Connections Manager",
+    "description": "Natively tracks, isolates, and displays active profile data layouts using QVink properties.",
+    "version": "1.0.0",
+    "author": "Sen",
+    "js": "index.js",
+    "type": "module"
+}
