@@ -147,7 +147,7 @@ function buildFlushArchivalSection(container, settings, saveSettings) {
  * Input nodes dictating API worker allocation and system instructional mapping.
  * ----------------------------------------------------------------------------
  */
-function buildSummarizerSection(container, settings, saveSettings, currentAvailableProfiles) {
+function buildSummarizerSection(container, settings, saveSettings, populateProfileSelect) {
     const subheaderNet = document.createElement('div');
     subheaderNet.innerText = '⚙️ Summarizer Worker Routing';
     subheaderNet.style = 'margin: 10px 0 5px 0; font-weight: bold; color: #fbbf24; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
@@ -157,14 +157,8 @@ function buildSummarizerSection(container, settings, saveSettings, currentAvaila
     profileSelectElement.className = 'text_display input_text';
     profileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
-    // This will be populated later by a callback
-    // availableProfiles.forEach(prof => {
-    //     const opt = document.createElement('option');
-    //     opt.value = prof.id;
-    //     opt.innerText = prof.name;
-    //     if (settings.selectedProfile === prof.id) opt.selected = true;
-    //     profileSelectElement.appendChild(opt);
-    // });
+    populateProfileSelect(profileSelectElement, 'selectedProfile'); // Populate now
+    
     profileSelectElement.onchange = async () => {
         settings.selectedProfile = profileSelectElement.value;
         await saveSettings();
