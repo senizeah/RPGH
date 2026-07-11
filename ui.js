@@ -202,7 +202,7 @@ function buildSummarizerSection(container, settings, saveSettings, populateProfi
  * Interface elements handling stylistic/heuristic regular expressions and detox prompts.
  * ----------------------------------------------------------------------------
  */
-function buildProseCleanerSection(container, settings, saveSettings, currentAvailableProfiles) {
+function buildProseCleanerSection(container, settings, saveSettings, populateProfileSelect) {
     const subheaderCleaner = document.createElement('div');
     subheaderCleaner.innerText = '🧹 AI Prose Cleaner & Formatting';
     subheaderCleaner.style = 'margin: 15px 0 5px 0; font-weight: bold; color: #38bdf8; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
@@ -239,14 +239,7 @@ function buildProseCleanerSection(container, settings, saveSettings, currentAvai
     cleanerProfileSelectElement.className = 'text_display input_text';
     cleanerProfileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
-    // This will be populated later by a callback
-    // availableProfiles.forEach(prof => {
-    //     const opt = document.createElement('option');
-    //     opt.value = prof.id;
-    //     opt.innerText = prof.name;
-    //     if (settings.cleanerProfile === prof.id || settings.cleanerProfile === prof.name) opt.selected = true;
-    //     cleanerProfileSelectElement.appendChild(opt);
-    // });
+    populateProfileSelect(cleanerProfileSelectElement, 'cleanerProfile'); // Populate now
 	cleanerProfileSelectElement.onchange = async () => {
 		settings.cleanerProfile = cleanerProfileSelectElement.value;
 		await saveSettings();
