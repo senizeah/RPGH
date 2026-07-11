@@ -154,6 +154,7 @@ function buildSummarizerSection(container, settings, saveSettings, populateProfi
     container.appendChild(subheaderNet);
 
     const profileSelectElement = document.createElement('select');
+    profileSelectElement.dataset.settingKey = 'selectedProfile';
     profileSelectElement.className = 'text_display input_text';
     profileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
@@ -236,6 +237,7 @@ function buildProseCleanerSection(container, settings, saveSettings, populatePro
     container.appendChild(createSettingRow('Destructively Strip Regex Matches Locally', checkRegexStyle));
 
     const cleanerProfileSelectElement = document.createElement('select');
+    cleanerProfileSelectElement.dataset.settingKey = 'cleanerProfile';
     cleanerProfileSelectElement.className = 'text_display input_text';
     cleanerProfileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
@@ -327,6 +329,7 @@ function buildRpgEngineSection(container, settings, saveSettings, populateProfil
     container.appendChild(createSettingRow('Live Character Status Overlay View', posSelect, 'Places a floating overlay panel inside the viewport tracking data fields.'));
 
     const rpgProfileSelectElement = document.createElement('select');
+    rpgProfileSelectElement.dataset.settingKey = 'rpgWorkerProfile';
     rpgProfileSelectElement.className = 'text_display input_text';
     rpgProfileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
