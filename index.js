@@ -135,8 +135,19 @@ import { estimateTokens } from './token.js';
             context.extensionSettings['flush-monitor'], 
             saveSettings, 
             () => executeFlushToLorebook(context.extensionSettings['flush-monitor'], updateCount, context), 
-            // ⬇️ Updated object path here ⬇️
-            () => context?.settings?.connectionManager?.profiles || [{ id: 'default', name: 'Default Profile Worker' }], 
+            
+            // ⬇️ Replace the old synchronous array with this Async Fetch ⬇️
+            async () => {
+                try {
+                    const response = await fetch('/api/settings');
+                    const data = await response.json();
+                    return data?.connectionManager?.profiles || [{ id: 'default', name: 'Default Profile Worker' }];
+                } catch (error) {
+                    console.error("Flush-Monitor: Failed to fetch profiles from API:", error);
+                    return [{ id: 'default', name: 'Default Profile Worker' }];
+                }
+            }, 
+            
             updateCount, 
             (el) => { variableTextAreaRef = el; }
         );
