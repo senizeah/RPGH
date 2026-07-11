@@ -147,7 +147,7 @@ function buildFlushArchivalSection(container, settings, saveSettings) {
  * Input nodes dictating API worker allocation and system instructional mapping.
  * ----------------------------------------------------------------------------
  */
-function buildSummarizerSection(container, settings, saveSettings, availableProfiles) {
+function buildSummarizerSection(container, settings, saveSettings, currentAvailableProfiles) {
     const subheaderNet = document.createElement('div');
     subheaderNet.innerText = '⚙️ Summarizer Worker Routing';
     subheaderNet.style = 'margin: 10px 0 5px 0; font-weight: bold; color: #fbbf24; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
@@ -157,13 +157,14 @@ function buildSummarizerSection(container, settings, saveSettings, availableProf
     profileSelectElement.className = 'text_display input_text';
     profileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
-    availableProfiles.forEach(prof => {
-        const opt = document.createElement('option');
-        opt.value = prof.id;
-        opt.innerText = prof.name;
-        if (settings.selectedProfile === prof.id) opt.selected = true;
-        profileSelectElement.appendChild(opt);
-    });
+    // This will be populated later by a callback
+    // availableProfiles.forEach(prof => {
+    //     const opt = document.createElement('option');
+    //     opt.value = prof.id;
+    //     opt.innerText = prof.name;
+    //     if (settings.selectedProfile === prof.id) opt.selected = true;
+    //     profileSelectElement.appendChild(opt);
+    // });
     profileSelectElement.onchange = async () => {
         settings.selectedProfile = profileSelectElement.value;
         await saveSettings();
@@ -207,7 +208,7 @@ function buildSummarizerSection(container, settings, saveSettings, availableProf
  * Interface elements handling stylistic/heuristic regular expressions and detox prompts.
  * ----------------------------------------------------------------------------
  */
-function buildProseCleanerSection(container, settings, saveSettings, availableProfiles) {
+function buildProseCleanerSection(container, settings, saveSettings, currentAvailableProfiles) {
     const subheaderCleaner = document.createElement('div');
     subheaderCleaner.innerText = '🧹 AI Prose Cleaner & Formatting';
     subheaderCleaner.style = 'margin: 15px 0 5px 0; font-weight: bold; color: #38bdf8; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
@@ -301,7 +302,7 @@ function buildProseCleanerSection(container, settings, saveSettings, availablePr
  * Form hooks orchestrating ledger mechanics, screen overlays, and state matrices.
  * ----------------------------------------------------------------------------
  */
-function buildRpgEngineSection(container, settings, saveSettings, availableProfiles, onSidebarConfigChanged, getVariableEditAreaRef) {
+function buildRpgEngineSection(container, settings, saveSettings, currentAvailableProfiles, onSidebarConfigChanged, getVariableEditAreaRef) {
     const subheaderRpg = document.createElement('div');
     subheaderRpg.innerText = '📊 Automated RPG State Engine';
     subheaderRpg.style = 'margin: 15px 0 5px 0; font-weight: bold; color: #a78bfa; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
