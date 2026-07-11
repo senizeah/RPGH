@@ -245,13 +245,14 @@ function buildProseCleanerSection(container, settings, saveSettings, currentAvai
     cleanerProfileSelectElement.className = 'text_display input_text';
     cleanerProfileSelectElement.style = 'width: 150px; background: #111827; color: white; border: 1px solid rgba(255,255,255,0.2);';
     
-    availableProfiles.forEach(prof => {
-        const opt = document.createElement('option');
-        opt.value = prof.id;
-        opt.innerText = prof.name;
-        if (settings.cleanerProfile === prof.id || settings.cleanerProfile === prof.name) opt.selected = true;
-        cleanerProfileSelectElement.appendChild(opt);
-    });
+    // This will be populated later by a callback
+    // availableProfiles.forEach(prof => {
+    //     const opt = document.createElement('option');
+    //     opt.value = prof.id;
+    //     opt.innerText = prof.name;
+    //     if (settings.cleanerProfile === prof.id || settings.cleanerProfile === prof.name) opt.selected = true;
+    //     cleanerProfileSelectElement.appendChild(opt);
+    // });
 	cleanerProfileSelectElement.onchange = async () => {
 		settings.cleanerProfile = cleanerProfileSelectElement.value;
 		await saveSettings();
