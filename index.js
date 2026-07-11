@@ -167,16 +167,16 @@
     }
 
     // Saves extension settings to SillyTavern's persistent configuration store
-    async function saveSettings(modules) {
+    async function saveSettings() {
         try {
             if (typeof window.saveSettingsDebounced === 'function') {
                 window.saveSettingsDebounced();
             }
             const context = window.SillyTavern?.getContext();
             if (context) {
-                modules.rpgui.renderRpgSidebar(context.extensionSettings['flush-monitor'], context);
+                rpguiModule.renderRpgSidebar(context.extensionSettings['flush-monitor'], context);
             }
-            updateCount(modules);
+            updateCount();
         } catch (err) {
             logTelemetry('ProfileManager', `Failed to write persistent settings: ${err.message}`, 'error');
         }
@@ -188,8 +188,16 @@
         logTelemetry('ProfileManager', `Polling connection profiles from memory (${cycleAttempts}/${maxLifecycleRetries})...`);
 
         try {
-            const modules = await loadExtensionModules();
-            const stContext = modules.extensions.getContext() || window.SillyTavern?.getContext();
+            // Dynamically load modules one-by-one as per user's preference
+            uiModule = await import(`${baseModuleURL}/ui.js`);
+            cleanerModule = await import(`${baseModuleURL}/cleaner.js`);
+            summarizerModule = await import(`${baseModuleURL}/summarizer.js`);
+            rpghModule = await import(`${baseModuleURL}/rpgh.js`);
+            rpguiModule = await import(`${baseModuleURL}/rpgui.js`);
+            flushModule = await import(`${baseModuleURL}/flush.js`);
+            tokenModule = await import(`${baseModuleURL}/token.js`);
+
+            const stContext = window.SillyTavern?.getContext(); // Use window.SillyTavern.getContext() directly
 
             if (stContext) {
                 let rawProfiles = null;
@@ -237,13 +245,7 @@
                         stContext.extensionSettings['flush-monitor'] = {};
                     }
 
-                    const settings = Object.assign(
-                        {},
-                        modules.cleaner.defaultCleanerSettings,
-                        modules.summarizer.defaultSummarizerSettings,
-                        modules.rpgh.defaultRpgSettings,
-                        stContext.extensionSettings['flush-monitor']
-                    );
+                    const settings = getActiveSettings(stContext); // Call getActiveSettings without modules parameter
                     stContext.extensionSettings['flush-monitor'] = settings;
 
                     const getAvailableProfiles = () => {
@@ -259,27 +261,27 @@
                         return;
                     }
 
-                    monitorElement = modules.ui.initializeExtensionUI(
+                    monitorElement = uiModule.initializeExtensionUI( // Use uiModule directly
                         settings,
-                        () => saveSettings(modules),
-                        () => modules.flush.executeFlushToLorebook(settings, () => updateCount(modules), stContext),
+                        () => saveSettings(),
+                        () => flushModule.executeFlushToLorebook(settings, () => updateCount(), stContext),
                         getAvailableProfiles,
-                        () => updateCount(modules),
+                        () => updateCount(),
                         (el) => { variableTextAreaRef = el; }
                     );
 
                     logTelemetry('ProfileManager', `Success! Repository loaded with ${internalProfilesRepository.length} profiles.`);
-                    await saveSettings(modules);
+                    await saveSettings(); // Call saveSettings without modules parameter
 
                     // Setup system event routing
                     const eventSource = window.SillyTavern?.eventSource || stContext?.eventSource;
                     if (eventSource) {
                         eventSource.on('character_message_rendered', () => executeExtensionPipeline('EventBus:CHARACTER_MESSAGE_RENDERED'));
-                        eventSource.on('chat_changed', () => updateCount(modules));
-                        eventSource.on('message_sent', () => updateCount(modules));
+                        eventSource.on('chat_changed', () => updateCount());
+                        eventSource.on('message_sent', () => updateCount());
 
                         eventSource.on('settings_updated', async () => {
-                            updateCount(modules);
+                            updateCount();
 
                             let freshProfiles = null;
                             const updateContext = window.SillyTavern?.getContext();
@@ -306,14 +308,14 @@
                             }
 
                             const freshProfilesList = formatProfiles(internalProfilesRepository);
-                            modules.ui.updateProfileDropdowns(freshProfilesList, updateContext.extensionSettings['flush-monitor']);
+                            uiModule.updateProfileDropdowns(freshProfilesList, updateContext.extensionSettings['flush-monitor']); // Use uiModule directly
                             executeLevel2Fetch(updateContext.extensionSettings['flush-monitor']);
                         });
                     }
 
                     executeLevel2Fetch(settings);
                     isExtensionInitialized = true;
-                    updateCount(modules);
+                    updateCount();
                     logTelemetry('loader', 'Unified Extension Module Online.', 'info');
                     return; // Scanning loop complete
                 }
