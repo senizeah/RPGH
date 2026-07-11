@@ -167,7 +167,7 @@ export async function processRpgStateStage(chat, settings, context) {
 
     // LOOKUP: Retrieve name from connectionManager profiles
     const profiles = window.SillyTavern?.settings?.connectionManager?.profiles || [];
-    const profileObj = profiles.find(p => p.id === settings.rpgWorkerProfile);
+    const profileObj = profiles.find(p => p.id === settings.rpgWorkerProfile || p.name === settings.rpgWorkerProfile);
     const profileName = profileObj ? profileObj.name : settings.rpgWorkerProfile;
 
     console.log(`[RPG Engine] Mapping ID ${settings.rpgWorkerProfile} to Name: "${profileName}"`);

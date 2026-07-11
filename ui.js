@@ -248,16 +248,11 @@ function buildProseCleanerSection(container, settings, saveSettings, availablePr
         const opt = document.createElement('option');
         opt.value = prof.id;
         opt.innerText = prof.name;
-        if (settings.cleanerProfile === prof.id) opt.selected = true;
+        if (settings.cleanerProfile === prof.id || settings.cleanerProfile === prof.name) opt.selected = true;
         cleanerProfileSelectElement.appendChild(opt);
     });
 	cleanerProfileSelectElement.onchange = async () => {
-		// Find the profile object to get its human-readable name
-		const selectedProf = availableProfiles.find(p => p.id === cleanerProfileSelectElement.value);
-		
-		// Save the name instead of the ID
-		settings.cleanerProfile = selectedProf ? selectedProf.name : cleanerProfileSelectElement.value;
-		
+		settings.cleanerProfile = cleanerProfileSelectElement.value;
 		await saveSettings();
 	};
     container.appendChild(createSettingRow('Cleaner Worker Profile Alias', cleanerProfileSelectElement));
@@ -349,14 +344,11 @@ function buildRpgEngineSection(container, settings, saveSettings, availableProfi
         const opt = document.createElement('option');
         opt.value = prof.id;
         opt.innerText = prof.name;
-        if (settings.rpgWorkerProfile === prof.id) opt.selected = true;
+        if (settings.rpgWorkerProfile === prof.id || settings.rpgWorkerProfile === prof.name) opt.selected = true;
         rpgProfileSelectElement.appendChild(opt);
     });
-	// In your UI setup
 	rpgProfileSelectElement.onchange = async () => {
-		// Find the object associated with the selected value
-		const selectedProf = availableProfiles.find(p => p.id === rpgProfileSelectElement.value);
-		settings.rpgWorkerProfile = selectedProf.name; // Save the NAME, not the ID
+		settings.rpgWorkerProfile = rpgProfileSelectElement.value;
 		await saveSettings();
 	};
     container.appendChild(createSettingRow('RPG State Engine Worker Profile', rpgProfileSelectElement));
