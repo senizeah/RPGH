@@ -108,7 +108,7 @@ async function executeRpgWorker(profileName, systemPrompt, userContent, context)
 
     return new Promise((resolve) => {
         // MUST use the global core eventSource
-        const eventSource = window.SillyTavern?.eventSource || window.eventSource;
+        const eventSource = window.SillyTavern?.eventSource || context?.eventSource || window.eventSource;
 
         if (!eventSource) {
             console.error("[RPG Engine] [FAIL] Global eventSource is unavailable.");
