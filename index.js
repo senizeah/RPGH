@@ -135,7 +135,7 @@ import { estimateTokens } from './token.js';
             context.extensionSettings['flush-monitor'], 
             saveSettings, 
             () => executeFlushToLorebook(context.extensionSettings['flush-monitor'], updateCount, context), 
-            () => [{ id: 'default', name: 'Default Profile Worker' }], 
+            () => window.SillyTavern?.settings?.connectionManager?.profiles || [{ id: 'default', name: 'Default Profile Worker' }], 
             updateCount, 
             (el) => { variableTextAreaRef = el; }
         );
