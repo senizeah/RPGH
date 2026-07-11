@@ -124,7 +124,7 @@ export async function processProseCleanerStage(chat, immediateLastMsg, settings,
 
     if (shouldInvokeLLM) {
         const profiles = window.SillyTavern?.settings?.connectionManager?.profiles || [];
-        const profileObj = profiles.find(p => p.id === settings.cleanerProfile);
+        const profileObj = profiles.find(p => p.id === settings.cleanerProfile || p.name === settings.cleanerProfile);
         const profileName = profileObj ? profileObj.name : settings.cleanerProfile;
 
         console.log(`[Cleaner Engine] Mapping ID ${settings.cleanerProfile} to Name: "${profileName}"`);
