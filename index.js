@@ -11,7 +11,7 @@
     let internalProfilesRepository = [];
 
     // Helper to log clearly tagged telemetry
-    export function logTelemetry(tag, msg, lvl = 'info') {
+    function logTelemetry(tag, msg, lvl = 'info') {
         const payload = `[RPGH-Orchestrator:${tag.toUpperCase()}] [${lvl.toUpperCase()}] ${msg}`;
         if (lvl === 'error') console.error(`%c${payload}`, "color: #ef4444; font-weight: bold;");
         else if (lvl === 'warn') console.warn(`%c${payload}`, "color: #fbbf24;");

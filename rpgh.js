@@ -5,7 +5,6 @@
  * Handles state calculations, ledger serialization, modal viewers, and viewport tracking.
  * ============================================================================
  */
-import { logTelemetry } from './index.js';
 
 export const defaultRpgSettings = {
     rpgStateEnabled: true,
@@ -105,7 +104,7 @@ function safelySaveSettings(context) {
 }
 
 async function executeRpgWorker(profileConfig, systemPrompt, userContent, context) {
-    logTelemetry('RPGHelper', `Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
+    console.log(`[RPGHelper] Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
 
     const finalizedPrompt = `### Instruction:\n${systemPrompt}\n\n${userContent}\n\n### Response:\n`;
 
@@ -128,7 +127,7 @@ async function executeRpgWorker(profileConfig, systemPrompt, userContent, contex
         const response = await requestSecure('/api/textgen/generate', payload);
         return response?.text || response;
     } catch (err) {
-        logTelemetry('RPGHelper', `Secure API processing failed: ${err.message}`, 'error');
+        console.error(`[RPGHelper] Secure API processing failed:`, err);
         throw err;
     }
 }
@@ -144,20 +143,16 @@ export async function processRpgStateStage(chat, settings, context) {
     if (!immediateLastMsg || !immediateLastMsg.mes) return;
 
     const rawProfiles = context?.allProfilesRepository || window.SillyTavern?.getContext()?.allProfilesRepository || [];
-    logTelemetry('RPGHelper', `Raw settings.rpgWorkerProfile: "${settings.rpgWorkerProfile}"`);
+    console.log(`[RPGHelper] Raw settings.rpgWorkerProfile: "${settings.rpgWorkerProfile}"`);
 
-    let profileObj = rawProfiles.find(p => p.id === settings.rpgWorkerProfile || p.name === settings.rpgWorkerProfile);
+    const profileObj = rawProfiles.find(p => p.id === settings.rpgWorkerProfile || p.name === settings.rpgWorkerProfile);
 
     if (!profileObj) {
-        logTelemetry('RPGHelper', `Targeted connection profile (${settings.rpgWorkerProfile}) missing from repository. Attempting to fall back to 'default' profile.`, 'warn');
-        profileObj = rawProfiles.find(p => p.id === 'default' || p.name === 'default');
-        if (!profileObj) {
-            logTelemetry('RPGHelper', `No connection profile (including 'default') found. Skipping RPG calculations.`, 'error');
-            return;
-        }
+        console.warn(`[RPGHelper] Targeted connection profile (${settings.rpgWorkerProfile}) missing from repository. Skipping RPG calculations.`);
+        return;
     }
 
-    logTelemetry('RPGHelper', `Mapping profile ID ${settings.rpgWorkerProfile} to config: "${profileObj.name}"`);
+    console.log(`[RPGHelper] Mapping profile ID ${settings.rpgWorkerProfile} to config: "${profileObj.name}"`);
 
     const baselineJson = JSON.stringify(settings.runtimeVariables, null, 2);
     const systemPrompt = settings.rpgSystemPrompt.replace(/{{baselineString}}/g, baselineJson);
@@ -177,7 +172,7 @@ export async function processRpgStateStage(chat, settings, context) {
             await syncStateToLorebook(settings, context);
         }
     } catch (err) {
-        logTelemetry('RPGHelper', `RPG State Engine processing failed: ${err.message}`, 'error');
+        console.error("[RPGHelper] RPG State Engine processing failed:", err);
     }
 }
 
@@ -195,8 +190,8 @@ function parseAndApplyStateUpdates(output, settings, context) {
             variablesUpdated = true;
         }
     } catch (e) {
-        logTelemetry('FlushMonitor', `Failed to parse RPG state JSON: ${e.message}`, 'error');
-        logTelemetry('FlushMonitor', `Raw LLM Output was: ${output}`, 'warn');
+        console.error("FlushMonitor Pipeline [Error]: Failed to parse RPG state JSON.", e);
+        console.warn("Raw LLM Output was:", output);
     }
 
     if (variablesUpdated) {
@@ -210,24 +205,12 @@ function parseAndApplyStateUpdates(output, settings, context) {
 export async function syncStateToLorebook(settings, context) {
     const worldInfoContext = window.SillyTavern?.worldinfo || context?.worldinfo;
     if (!worldInfoContext) {
-        logTelemetry('FlushMonitor', "World Info system uninitialized or missing context.", 'warn');
+        console.warn("FlushMonitor [Lorebook Sync]: World Info system uninitialized or missing context.");
         return;
     }
     
     const lorebookName = settings.targetStateLorebook || "RPGLedger";
-    let targetBook = worldInfoContext.books?.[lorebookName] || worldInfoContext.current_books?.[lorebookName];
-    
-    // Create the lorebook if it doesn't exist
-    if (!targetBook) {
-        logTelemetry('FlushMonitor', `Lorebook "${lorebookName}" not found. Creating new lorebook.`, 'info');
-        const newLorebook = await worldInfoContext.createBook(lorebookName, {
-            id: Date.now() + Math.floor(Math.random() * 10000),
-            name: lorebookName,
-            is_active: true,
-            entries: {}
-        });
-        targetBook = newLorebook; // Assign the newly created lorebook
-    }
+    const targetBook = worldInfoContext.books?.[lorebookName] || worldInfoContext.current_books?.[lorebookName];
     
     if (!settings.cardUids) settings.cardUids = { stats: null, arts: null, artTree: null, inventory: null };
 
