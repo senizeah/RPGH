@@ -557,5 +557,22 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
 
     panel.appendChild(mainWrapper);
 
-    return monitorElement;
+    // Return the monitor element and a function to update profile dropdowns
+    return {
+        monitorElement: monitorElement,
+        updateProfileDropdowns: () => {
+            // Re-populate all profile dropdowns
+            const liveSettingsRef = window.SillyTavern.getContext().extensionSettings['flush-monitor'] || settings;
+            const profileSelectElements = [
+                document.querySelector('#flush-monitor-panel select[data-setting-key="selectedProfile"]'),
+                document.querySelector('#flush-monitor-panel select[data-setting-key="cleanerProfile"]'),
+                document.querySelector('#flush-monitor-panel select[data-setting-key="rpgWorkerProfile"]')
+            ].filter(Boolean); // Filter out nulls
+
+            profileSelectElements.forEach(selectElement => {
+                const settingsKey = selectElement.dataset.settingsKey;
+                populateProfileSelect(selectElement, settingsKey);
+            });
+        }
+    };
 }
