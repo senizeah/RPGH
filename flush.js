@@ -39,8 +39,10 @@ export async function executeFlushToLorebook(settings, updateCountCb, context) {
     toastr.info("Initializing context rotation...");
 
     try {
-        if (!window.SillyTavern.worldinfo) {
-            throw new Error("World Info systems uninitialized.");
+        // FIX: Safely extract worldinfo context from either window or extension parameters
+        const worldInfoContext = window.SillyTavern?.worldinfo || context?.worldinfo;
+        if (!worldInfoContext) {
+            throw new Error("World Info systems uninitialized or missing from runtime context.");
         }
 
         const chunkSize = settings.chunkSize;
@@ -75,7 +77,8 @@ export async function executeFlushToLorebook(settings, updateCountCb, context) {
                 insertion_order: 100
             };
 
-            await SillyTavern.worldinfo.createEntry(settings.targetLorebook, newEntry);
+            // FIX: Uses the safe local reference instead of relying on a naked global object
+            await worldInfoContext.createEntry(settings.targetLorebook, newEntry);
             chunkIndex++;
         }
 

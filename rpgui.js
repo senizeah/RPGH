@@ -1,15 +1,8 @@
 import { syncStateToLorebook } from './rpgh.js';
 
-// Module-scoped persistent UI node references
 let sidebarElement = null;
 let activeModalElement = null;
 
-/**
- * ----------------------------------------------------------------------------
- * MODAL UI SYSTEM
- * Creates floating window overlays for deeper state inspection and prompt editing.
- * ----------------------------------------------------------------------------
- */
 function closeActiveModal() {
     if (activeModalElement) {
         activeModalElement.remove();
@@ -60,13 +53,6 @@ function showRpgModal(titleText, contentElement, width = "400px") {
     document.body.appendChild(activeModalElement);
 }
 
-/**
- * Opens a management modal for RPG state.
- * @param {string} title - Modal title.
- * @param {string} type - 'stats' | 'inventory' | 'arts' | 'artTree'.
- * @param {Object} settings - Current extension settings.
- * @param {Object} context - SillyTavern context.
- */
 function openRpgManagementModal(title, type, settings, context) {
     const variables = settings.runtimeVariables || {};
     const container = document.createElement('div');
@@ -76,20 +62,18 @@ function openRpgManagementModal(title, type, settings, context) {
         if (!confirm("Are you sure you want to save these changes to the RPGLedger?")) return;
 
         settings.runtimeVariables = updatedVariables;
-        context.extensionSettings['flush-monitor'] = settings;
-        await context.saveSettingsObj();
-        await syncStateToLorebook(settings);
+        if (context?.extensionSettings) {
+            context.extensionSettings['flush-monitor'] = settings;
+        }
+        if (context && typeof context.saveSettingsObj === 'function') {
+            await context.saveSettingsObj();
+        }
+        await syncStateToLorebook(settings, context);
         closeActiveModal();
         renderRpgSidebar(settings, context);
     };
 
-    const cancelChanges = () => {
-        closeActiveModal();
-    };
-
-    // --- Sub-renderers ---
-
-    const renderStatsManager = (draft, onCommit, onCancel) => {
+    const renderStatsManager = (draft) => {
         const list = document.createElement('div');
         list.style = 'display: flex; flex-direction: column; gap: 8px;';
         
@@ -128,7 +112,7 @@ function openRpgManagementModal(title, type, settings, context) {
         addBtn.innerText = '+ Add Variable';
         addBtn.style = 'background: #065f46; color: white; border: none; padding: 8px; cursor: pointer; border-radius: 4px; font-size: 11px;';
         addBtn.onclick = () => {
-            if (!confirm("⚠️ Warning: Adding variables increases the prompt size. Please ensure your model has sufficient context window capacity before proceeding.")) return;
+            if (!confirm("⚠️ Warning: Adding variables increases prompt size. Check context capacity.")) return;
             const rowDiv = document.createElement('div');
             rowDiv.style = 'display: flex; gap: 5px; align-items: center;';
             
@@ -155,7 +139,7 @@ function openRpgManagementModal(title, type, settings, context) {
         container.appendChild(addBtn);
     };
 
-    const renderInventoryManager = (draft, onCommit, onCancel) => {
+    const renderInventoryManager = (draft) => {
         const list = document.createElement('div');
         list.style = 'display: flex; flex-direction: column; gap: 10px;';
         const items = draft.inventory || [];
@@ -186,7 +170,6 @@ function openRpgManagementModal(title, type, settings, context) {
                 header.appendChild(delBtn);
                 itemDiv.appendChild(header);
 
-                // Quantity
                 const qtyDiv = document.createElement('div');
                 qtyDiv.style = 'display: flex; align-items: center; gap: 5px; font-size: 11px;';
                 qtyDiv.innerHTML = 'Qty:';
@@ -198,11 +181,9 @@ function openRpgManagementModal(title, type, settings, context) {
                 qtyDiv.appendChild(qtyInput);
                 itemDiv.appendChild(qtyDiv);
 
-                // Flags
                 const flagContainer = document.createElement('div');
                 flagContainer.style = 'display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;';
 
-                // Always ensure item.flags is initialized as an array right away
                 if (!Array.isArray(item.flags)) item.flags = [];
 
                 commonFlags.forEach(f => {
@@ -218,7 +199,6 @@ function openRpgManagementModal(title, type, settings, context) {
                             const i = item.flags.indexOf(f); 
                             if (i > -1) item.flags.splice(i, 1); 
                         }
-                        // Re-render to keep the "Other" text field in sync with checkbox changes
                         refreshList(); 
                     };
                     lbl.appendChild(cb);
@@ -236,7 +216,6 @@ function openRpgManagementModal(title, type, settings, context) {
                     const others = e.target.value.split(',').map(s => s.trim()).filter(s => s !== '');
                     const base = item.flags.filter(f => commonFlags.includes(f));
                     item.flags = [...base, ...others];
-                    // Re-render to ensure references are completely fresh
                     refreshList(); 
                 };
                 otherFlagDiv.appendChild(otherInput);
@@ -254,14 +233,13 @@ function openRpgManagementModal(title, type, settings, context) {
         addBtn.innerText = '+ Add Item';
         addBtn.style = 'background: #065f46; color: white; border: none; padding: 8px; cursor: pointer; border-radius: 4px; font-size: 11px;';
         addBtn.onclick = () => {
-            if (!confirm("⚠️ Warning: Adding items increases the prompt size. Please ensure your model has sufficient context window capacity before proceeding.")) return;
             items.push({ name: "New Item", flags: [], quantity: 1 });
             refreshList();
         };
         container.appendChild(addBtn);
     };
 
-    const renderListManager = (title, listData, key, isArray = false) => {
+    const renderListManager = (title, listData, isArray = false) => {
         const list = document.createElement('div');
         list.style = 'display: flex; flex-direction: column; gap: 8px;';
         
@@ -296,31 +274,29 @@ function openRpgManagementModal(title, type, settings, context) {
         addBtn.innerText = '+ Add Entry';
         addBtn.style = 'background: #065f46; color: white; border: none; padding: 8px; cursor: pointer; border-radius: 4px; font-size: 11px;';
         addBtn.onclick = () => {
-            if (!confirm("⚠️ Warning: Adding entries increases the prompt size. Please ensure your model has sufficient context window capacity before proceeding.")) return;
             if (isArray) listData.push("New Entry");
             refreshList();
         };
         container.appendChild(addBtn);
     };
 
-    if (type === 'stats') renderStatsManager(variables, onCommit, onCancel);
-    else if (type === 'inventory') renderInventoryManager(variables, onCommit, onCancel);
-    else if (type === 'arts') renderListManager('Arts', variables.skills || [], 'skills', true);
-    else if (type === 'artTree') renderListManager('Art-Tree', variables.rpg_artTree || [], 'rpg_artTree', true);
+    if (type === 'stats') renderStatsManager(variables);
+    else if (type === 'inventory') renderInventoryManager(variables);
+    else if (type === 'arts') renderListManager('Arts', variables.skills || [], true);
+    else if (type === 'artTree') renderListManager('Art-Tree', variables.rpg_artTree || [], true);
 
-    // --- Footer Actions ---
     const footer = document.createElement('div');
     footer.style = 'display: flex; justify-content: space-between; gap: 10px; margin-top: 10px;';
 
     const cancelBtn = document.createElement('button');
     cancelBtn.innerText = 'Cancel';
     cancelBtn.style = 'flex: 1; background: #374151; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px;';
-    cancelBtn.onclick = cancelChanges;
+    cancelBtn.onclick = closeActiveModal;
 
     const saveBtn = document.createElement('button');
     saveBtn.innerText = 'Save Changes';
     saveBtn.style = 'flex: 2; background: #2563eb; color: white; border: none; padding: 8px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px;';
-    saveBtn.onclick = () => onCommit(variables);
+    saveBtn.onclick = () => commitChanges(variables);
 
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
@@ -342,8 +318,12 @@ function openPromptEditorModal(settings, context) {
     saveBtn.style = 'padding: 8px; background: #2563eb; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;';
     saveBtn.onclick = async () => {
         settings.rpgSystemPrompt = textarea.value;
-        context.extensionSettings['flush-monitor'] = settings;
-        await context.saveSettingsObj();
+        if (context?.extensionSettings) {
+            context.extensionSettings['flush-monitor'] = settings;
+        }
+        if (context && typeof context.saveSettingsObj === 'function') {
+            await context.saveSettingsObj();
+        }
         closeActiveModal();
     };
 
@@ -358,31 +338,31 @@ function openPromptEditorModal(settings, context) {
  * ----------------------------------------------------------------------------
  */
 export function renderRpgSidebar(settings, context) {
-    console.log("FlushMonitor [Sidebar]: renderRpgSidebar entry called.");
+    console.log("RPG Engine [Sidebar]: renderRpgSidebar entry called.");
     
     if (sidebarElement) {
-        console.log("FlushMonitor [Sidebar]: Purging stale sidebar component container...");
+        console.log("RPG Engine [Sidebar]: Purging stale sidebar component container...");
         sidebarElement.remove();
         sidebarElement = null;
     }
 
-    // Guardrail Check Evaluation Trace
-    const hasPosition = !!settings.rpgSidebarPosition;
-    const isNotHidden = settings.rpgSidebarPosition !== "hidden";
-    const chatContainerExists = !!document.getElementById('chat_container');
+    // Modernized Target Fallback Lookup 
+    const targetElement = document.getElementById('chat') || document.getElementById('chat_container');
+    const chatContainerExists = !!targetElement;
+    const hasPosition = !!settings?.rpgSidebarPosition;
+    const isNotHidden = settings?.rpgSidebarPosition !== "hidden";
 
-    console.log(`FlushMonitor [Sidebar Guardrails Evaluation]: 
-      - Position configuration defined: ${hasPosition} (${settings.rpgSidebarPosition})
-      - Visibility status explicitly unlocked: ${isNotHidden}
-      - Target #chat_container present in DOM tree: ${chatContainerExists}`
-    );
+    console.log(`RPG Engine [Sidebar Guardrails Evaluation]: \n` +
+                ` - Position configuration defined: ${hasPosition} (${settings?.rpgSidebarPosition})\n` +
+                ` - Visibility status explicitly unlocked: ${isNotHidden}\n` +
+                ` - Target #chat or #chat_container present in DOM tree: ${chatContainerExists}`);
 
-    if (!settings.rpgSidebarPosition || settings.rpgSidebarPosition === "hidden" || !document.getElementById('chat_container')) {
-        console.warn("FlushMonitor [Sidebar Halt]: Aborting initialization loop. Pre-flight alignment check failed.");
+    if (!hasPosition || !isNotHidden || !chatContainerExists) {
+        console.warn("RPG Engine [Sidebar Halt]: Aborting initialization loop. Pre-flight alignment check failed.");
         return;
     }
 
-    console.log("FlushMonitor [Sidebar Block]: Constructing live sidebar component node layout...");
+    console.log("RPG Engine [Sidebar Block]: Constructing live sidebar component node layout...");
     sidebarElement = document.createElement('div');
     sidebarElement.id = 'rpg-status-sidebar';
     
@@ -396,7 +376,6 @@ export function renderRpgSidebar(settings, context) {
         z-index: 9999; overflow-y: auto; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
     `;
 
-    // 1. Header
     const title = document.createElement('div');
     title.innerHTML = '📊 <span>RPG State Ledger</span>';
     title.style = 'font-weight: bold; font-size: 13px; color: #34d399; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;';
@@ -404,7 +383,6 @@ export function renderRpgSidebar(settings, context) {
 
     const variables = settings.runtimeVariables || {};
     
-    // 2. Status / Equipment Callouts
     const equipmentBlock = document.createElement('div');
     equipmentBlock.style = 'margin-bottom: 12px; font-size: 11px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);';
     
@@ -446,7 +424,6 @@ export function renderRpgSidebar(settings, context) {
     }
     sidebarElement.appendChild(equipmentBlock);
 
-    // 3. Stats Table
     const table = document.createElement('table');
     table.style = 'width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px;';
     for (const [key, val] of Object.entries(variables)) {
@@ -466,7 +443,6 @@ export function renderRpgSidebar(settings, context) {
     }
     sidebarElement.appendChild(table);
 
-    // 4. Action Grid Elements
     const buttonGrid = document.createElement('div');
     buttonGrid.style = 'display: grid; grid-template-columns: 1fr 1fr; gap: 6px;';
 
@@ -507,7 +483,6 @@ export function renderRpgSidebar(settings, context) {
 
     sidebarElement.appendChild(buttonGrid);
 
-    // 5. Token Tracker Data Grid Injection
     const tokenTracker = document.createElement('div');
     tokenTracker.style = 'margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;';
     
@@ -560,13 +535,10 @@ export function renderRpgSidebar(settings, context) {
     tokenTracker.appendChild(createTokenTable(tokenData));
     sidebarElement.appendChild(tokenTracker);
 
-    console.log("FlushMonitor [Sidebar]: Appending constructed sidebar element container directly to document.body...");
+    console.log("RPG Engine [Sidebar]: Appending constructed sidebar element container directly to document.body...");
     document.body.appendChild(sidebarElement);
 }
 
-/**
- * Helper for raw data viewing (legacy/fallback)
- */
 function openDataModal(title, data, isJson = false) {
     const container = document.createElement('pre');
     container.style = 'margin: 0; white-space: pre-wrap; font-family: monospace; font-size: 12px; color: #a78bfa; background: #1f2937; padding: 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05);';

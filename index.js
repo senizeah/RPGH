@@ -4,165 +4,160 @@ import { processSummarizerStage, defaultSummarizerSettings } from './summarizer.
 import { processRpgStateStage, defaultRpgSettings } from './rpgh.js';
 import { renderRpgSidebar } from './rpgui.js';
 import { executeFlushToLorebook } from './flush.js';
-import { injectFormattingLock } from './lock.js';
 import { estimateTokens } from './token.js';
-// Core App Event Imports
-import { eventSource, event_types } from '../../../../script.js';
-// FIX: Import the native interceptor utilities from their proper sibling module location
-import { ExtensionInterceptor, EXTENSION_INTERCEPTOR_TYPE } from '../../../../extensions.js';
 
 (function() {
-    const context = SillyTavern.getContext();
+    let isExtensionInitialized = false;
     let monitorElement = null;
     let variableTextAreaRef = null; 
+    let isPipelineProcessing = false;
 
-    console.log("FlushMonitor [Lifecycle]: Initializing namespace wrapper...");
-
-    if (!context.extensionSettings['flush-monitor']) {
-        context.extensionSettings['flush-monitor'] = {};
-    }
-    
-    const settings = Object.assign(
-        {}, 
-        defaultCleanerSettings, 
-        defaultSummarizerSettings, 
-        defaultRpgSettings, 
-        context.extensionSettings['flush-monitor']
-    );
-
-    async function saveSettings() {
-        console.log("FlushMonitor [Settings]: Serializing configurations...", settings);
-        context.extensionSettings['flush-monitor'] = settings;
-        await context.saveSettingsObj();
-        renderRpgSidebar(settings, context);
+    function logTelemetry(msg, lvl = 'info') {
+        const payload = `[Flush-Monitor:ORCHESTRATOR] [${lvl.toUpperCase()}] ${msg}`;
+        if (lvl === 'error') console.error(`%c${payload}`, "color: #ef4444; font-weight: bold;");
+        else if (lvl === 'warn') console.warn(`%c${payload}`, "color: #fbbf24;");
+        else console.log(`%c${payload}`, "color: #10b981; font-weight: bold;"); 
     }
 
-    function getAvailableSTProfiles() {
+    function getActiveSettings(context) {
+        return Object.assign(
+            {}, 
+            defaultCleanerSettings, 
+            defaultSummarizerSettings, 
+            defaultRpgSettings, 
+            context?.extensionSettings?.['flush-monitor'] || {}
+        );
+    }
+
+    async function forceTriggerPipeline(sourceName = "Event Bus Trigger") {
+        if (isPipelineProcessing) {
+            logTelemetry(`Pipeline bounced via [${sourceName}]: Processing lock is active.`, "debug");
+            return;
+        }
+
+        const activeContext = window.SillyTavern?.getContext();
+        const chat = activeContext?.chat;
+        if (!chat || !chat.length) return;
+
+        const targetIndex = chat.length - 1;
+        const lastMsg = chat[targetIndex];
+        const currentSettings = getActiveSettings(activeContext);
+
+        if (!lastMsg || lastMsg.is_user || lastMsg.system || lastMsg.name === "SillyTavern System") {
+            return;
+        }
+
         try {
-            const stDropdown = document.getElementById('connection_profiles');
-            if (stDropdown && stDropdown.options && stDropdown.options.length > 0) {
-                const profiles = [];
-                for (let i = 0; i < stDropdown.options.length; i++) {
-                    const option = stDropdown.options[i];
-                    if (option.value) {
-                        profiles.push({ id: option.value, name: option.text });
-                    }
+            isPipelineProcessing = true;
+            logTelemetry(`🚨 PIPELINE PROCESSING RUNNING ON INDEX [${targetIndex}] via [${sourceName}]`, 'info');
+
+            // 1. Prose Cleaner & Summarizer Stage
+            if (!lastMsg.extra?.is_cleaned) {
+                try {
+                    logTelemetry(`🔥 Executing Cleaner & Summarizer Modules...`, "info");
+                    await processProseCleanerStage(chat, lastMsg, currentSettings, (t) => estimateTokens(t, currentSettings), activeContext);
+                    await processSummarizerStage(chat, currentSettings, (t) => estimateTokens(t, currentSettings), () => executeFlushToLorebook(currentSettings, updateCount, activeContext), updateCount, activeContext);
+                } catch (proseError) {
+                    logTelemetry(`Prose/Summary sub-stage failed: ${proseError.message}`, 'error');
                 }
-                if (profiles.length > 0) return profiles;
             }
-            return [{ id: 'default', name: 'Default API Endpoint' }];
-        } catch (e) {
-            console.error("FlushMonitor [UI Error]: Failed to fetch profiles", e);
-            return [{ id: 'default', name: 'Default API Endpoint' }];
+
+            // 2. RPG Subsystem Stage (Always fires after cleaning is resolved)
+            try {
+                if (activeContext && typeof activeContext.characters !== 'undefined') {
+                    logTelemetry(`🎲 Processing RPG state calculation sequence...`, "info");
+                    await processRpgStateStage(chat, currentSettings, activeContext);
+                }
+            } catch (rpgError) {
+                logTelemetry(`RPG Subsystem sync failed: ${rpgError.message}`, 'error');
+            }
+
+            updateCount();
+            
+        } catch (globalPipelineError) {
+            logTelemetry(`Critical Pipeline Exception: ${globalPipelineError.message}`, 'error');
+        } finally {
+            isPipelineProcessing = false;
+            logTelemetry(`Pipeline processing lock released.`, "debug");
         }
     }
 
     function updateCount() {
-        console.log("FlushMonitor [Telemetry]: updateCount() triggered.");
-        if (!context.chat) {
-            console.warn("FlushMonitor [Telemetry Check]: context.chat is undefined or uninstantiated.");
-            return;
-        }
-        if (!monitorElement) {
-            console.warn("FlushMonitor [Telemetry Check]: monitorElement is null (UI not appended yet).");
-            return;
-        }
+        const context = window.SillyTavern?.getContext();
+        if (!context?.chat || !monitorElement) return;
         
+        const currentSettings = getActiveSettings(context);
         const totalMessages = context.chat.length;
-        const summarizedCount = context.chat.filter(m => m.extra && m.extra.is_summarized).length;
-        const unsummarizedCount = totalMessages - summarizedCount;
-
-        let statusColor = "#22c55e"; 
-        if (totalMessages >= settings.autoFlushThreshold) {
-            statusColor = "#ef4444"; 
-        } else if (totalMessages >= (settings.autoFlushThreshold - settings.warningThreshold)) {
-            statusColor = "#fbbf24"; 
-        }
+        const summarizedCount = context.chat.filter(m => m.extra?.is_summarized).length;
         
         monitorElement.innerHTML = `
-            <div style="color: ${statusColor}; font-weight: bold; margin-bottom: 5px;">Cache Pool Status</div>
-            <div>Active Pool: <b>${totalMessages}</b> / ${settings.autoFlushThreshold}</div>
-            <div>Summarized: ${summarizedCount} | Floating Raw: ${unsummarizedCount}</div>
+            <div style="font-weight: bold; margin-bottom: 5px;">Cache Pool Status</div>
+            <div>Active Pool: <b>${totalMessages}</b> / ${currentSettings.autoFlushThreshold || 0}</div>
+            <div>Summarized: ${summarizedCount}</div>
         `;
+        
+        if (variableTextAreaRef) variableTextAreaRef.value = JSON.stringify(currentSettings.runtimeVariables, null, 4);
+        renderRpgSidebar(currentSettings, context);
+    }
 
-        if (variableTextAreaRef && document.activeElement !== variableTextAreaRef) {
-            variableTextAreaRef.value = JSON.stringify(settings.runtimeVariables, null, 4);
+    function runInitialization() {
+        if (isExtensionInitialized) return;
+        
+        const context = window.SillyTavern?.getContext();
+        if (!context || !context.extensionSettings) return;
+
+        isExtensionInitialized = true;
+        logTelemetry("Initializing Unified Extension Core for SillyTavern 1.18.0...", "info");
+
+        if (!context.extensionSettings['flush-monitor']) {
+            context.extensionSettings['flush-monitor'] = {};
+        }
+        
+        context.extensionSettings['flush-monitor'] = Object.assign(
+            {},
+            defaultCleanerSettings,
+            defaultSummarizerSettings,
+            defaultRpgSettings,
+            context.extensionSettings['flush-monitor']
+        );
+        
+        async function saveSettings() {
+            try {
+                await context.saveSettingsObj();
+                renderRpgSidebar(context.extensionSettings['flush-monitor'], context);
+                updateCount();
+            } catch (err) {
+                console.error("SETTINGS WRITE FAULT:", err);
+            }
         }
 
-        console.log("FlushMonitor [Telemetry]: Gathering token metrics...");
-        const tokenMetrics = estimateTokens(context, settings); 
-        settings.runtimeVariables = Object.assign({}, settings.runtimeVariables, tokenMetrics);
-
-        console.log("FlushMonitor [Telemetry]: Passing off to renderRpgSidebar(). Positions Mode:", settings.rpgSidebarPosition);
-        renderRpgSidebar(settings, context);
-    }
-
-    async function handlePostGeneration() {
-        console.log("FlushMonitor [Pipeline]: handlePostGeneration interceptor matching processing tokens...");
-        const chat = context.chat;
-        if (!chat || chat.length === 0) return;
-
-        const immediateLastMsg = chat[chat.length - 1];
-        
-         if (immediateLastMsg && !immediateLastMsg.is_user && immediateLastMsg.mes && !immediateLastMsg.extra?.is_cleaned) {
-             await processProseCleanerStage(chat, immediateLastMsg, settings, (t) => estimateTokens(t, settings), context);
-         }
- 
-         await processSummarizerStage(
-             chat, 
-             settings, 
-             (t) => estimateTokens(t, settings), 
-             () => executeFlushToLorebook(settings, updateCount, context), 
-             updateCount, 
-             context
-         );
-
-        await processRpgStateStage(chat, settings, context, updateCount);
-        updateCount();
-    }
-
-    // --- MAIN INITIALIZATION ORCHESTRATION ---
-    eventSource.on(event_types.APP_READY, () => {
-        console.log("FlushMonitor [Lifecycle]: SillyTavern APP_READY captured! Injecting panel layers...");
-        
         monitorElement = initializeExtensionUI(
-            settings, 
+            context.extensionSettings['flush-monitor'], 
             saveSettings, 
-            () => executeFlushToLorebook(settings, updateCount, context), 
-            getAvailableSTProfiles,
+            () => executeFlushToLorebook(context.extensionSettings['flush-monitor'], updateCount, context), 
+            () => [{ id: 'default', name: 'Default Profile Worker' }], 
             updateCount, 
-            (el) => { variableTextAreaRef = el; } 
+            (el) => { variableTextAreaRef = el; }
         );
 
-        // FIX: Resolve the interceptor hook type via the cleanly imported ExtensionInterceptor pipeline module
-        const interceptorGenerationType = EXTENSION_INTERCEPTOR_TYPE?.GENERATE || 'generate';
-        
-        ExtensionInterceptor.add(interceptorGenerationType, async (chat, ctxSize, abort, type) => {
-            if (settings.enableFormatLock) {
-                try {
-                    await injectFormattingLock(chat, type);
-                } catch (e) {
-                    console.error("FlushMonitor [Interceptor Error]: Formatting lock failed", e);
-                }
-            }
-
-            const lastMsg = chat[chat.length - 1];
-            if (lastMsg && lastMsg.is_user && !lastMsg.is_system) {
-                try {
-                    await processRpgStateStage(chat, settings, context, updateCount);
-                } catch (e) {
-                    console.error("FlushMonitor [Interceptor Error]: Pre-flight RPG calculation failed", e);
-                } finally {
-                    updateCount();
-                }
-            }
-        });
-
-        eventSource.on(event_types.MESSAGE_RECEIVED, handlePostGeneration);
-        jQuery(document).on('SillyTavern.CHAT_CHANGED SillyTavern.MESSAGE_SENT', updateCount);
-        window.addEventListener('flush-monitor:sidebar-config-changed', updateCount);
+        // NATIVE 1.18.0 LIFE-CYCLE EVENTS: Replaces DOM Mutation and Network Observers completely
+        const eventSource = window.SillyTavern?.eventSource || context?.eventSource;
+        if (eventSource) {
+            eventSource.on('character_message_rendered', () => {
+                forceTriggerPipeline("EventBus:CHARACTER_MESSAGE_RENDERED");
+            });
+            eventSource.on('chat_changed', updateCount);
+            eventSource.on('message_sent', updateCount);
+        }
         
         updateCount();
-    });
+        logTelemetry("Unified Extension Module Online.", "info");
+    }
 
+    const bootInterval = setInterval(() => {
+        if (window.SillyTavern?.getContext()?.extensionSettings) {
+            runInitialization();
+            clearInterval(bootInterval);
+        }
+    }, 200);
 })();

@@ -6,9 +6,6 @@
  * ============================================================================
  */
 
-/**
- * Default internal configuration states for the RPG subsystem.
- */
 export const defaultRpgSettings = {
     rpgStateEnabled: true,
     rpgWorkerProfile: "default",
@@ -19,7 +16,7 @@ export const defaultRpgSettings = {
         artTree: null,
         inventory: null
     },
-    rpgSidebarPosition: "right", // Options: "left", "right", "hidden"
+    rpgSidebarPosition: "right", 
     runtimeVariables: {
         rpg_dayNum: 1,
         rpg_dayPhase: "Dawn",
@@ -98,52 +95,95 @@ Analyze the latest narrative turn and return the COMPLETE updated state of all v
 {"rpg_dayNum": 1, "rpg_dayPhase": "Dusk", "rpg_currentHP": 45, "inventory": [{"name": "Iron Dagger", "flags": ["Equipped"]}, {"name": "Traveler's Cloak", "flags": ["Equipped", "Dirty"]}]}`
 };
 
+function safelySaveSettings(context) {
+    if (context && typeof context.saveSettingsObj === 'function') {
+        context.saveSettingsObj();
+    } else if (window.SillyTavern?.getContext && typeof window.SillyTavern.getContext().saveSettingsObj === 'function') {
+        window.SillyTavern.getContext().saveSettingsObj();
+    }
+}
+
+async function executeRpgWorker(profileName, systemPrompt, userContent, context) {
+    console.log(`[RPG Engine] [TRACE] Entering worker. Targeting: "${profileName}"`);
+
+    return new Promise((resolve) => {
+        // MUST use the global core eventSource
+        const eventSource = window.SillyTavern?.eventSource || window.eventSource;
+
+        if (!eventSource) {
+            console.error("[RPG Engine] [FAIL] Global eventSource is unavailable.");
+            resolve('');
+            return;
+        }
+
+        const safetyTimeout = setTimeout(() => {
+            console.warn("[RPG Engine] [TIMEOUT] Generation expired.");
+            eventSource.removeListener('background_gen_finished', eventHandler);
+            resolve('');
+        }, 7000);
+
+        const eventHandler = (data) => {
+            console.log("[RPG Engine] [TRACE] Signal received.");
+            clearTimeout(safetyTimeout);
+            eventSource.removeListener('background_gen_finished', eventHandler);
+            resolve(data?.text || '');
+        };
+        
+        eventSource.on('background_gen_finished', eventHandler);
+
+        // Sanitize inputs
+        const cleanPrompt = systemPrompt.replace(/"/g, '\\"');
+        const cleanContent = userContent.replace(/"/g, '\\"');
+        
+        // Command must have quotes around the profile name to handle spaces
+        const macroString = `/profile-genstream "${profileName}" "${cleanPrompt}" "${cleanContent}"`;
+
+        try {
+            console.log(`[RPG Engine] [EXEC] Sending command: ${macroString}`);
+            window.SillyTavern.executeSlashCommands(macroString);
+        } catch (err) {
+            console.error("[RPG Engine] [FAIL] Dispatch failed:", err);
+            clearTimeout(safetyTimeout);
+            eventSource.removeListener('background_gen_finished', eventHandler);
+            resolve('');
+        }
+    });
+}
+
 /**
  * LIFECYCLE PIPELINE & LOREBOOK SYNC
- * ----------------------------------------------------------------------------
  */
-export async function processRpgStateStage(chat, settings, context, updateCountCb) {
-    if (!settings.rpgStateEnabled || !settings.rpgWorkerProfile || chat.length === 0) return;
+export async function processRpgStateStage(chat, settings, context) {
+    if (!chat || !settings) return;
+    if (!settings.rpgStateEnabled || chat.length === 0) return;
 
     const immediateLastMsg = chat[chat.length - 1];
     if (!immediateLastMsg || !immediateLastMsg.mes) return;
-    
-    const cleanText = immediateLastMsg.mes.trim();
-    if (immediateLastMsg.is_system || cleanText.startsWith("[OOC:") || cleanText.startsWith("(OOC:") || cleanText.startsWith("/")) {
-        return;
-    }
+
+    // LOOKUP: Retrieve name from connectionManager profiles
+    const profiles = window.SillyTavern?.settings?.connectionManager?.profiles || [];
+    const profileObj = profiles.find(p => p.id === settings.rpgWorkerProfile);
+    const profileName = profileObj ? profileObj.name : settings.rpgWorkerProfile;
+
+    console.log(`[RPG Engine] Mapping ID ${settings.rpgWorkerProfile} to Name: "${profileName}"`);
+
+    const baselineJson = JSON.stringify(settings.runtimeVariables, null, 2);
+    const systemPrompt = settings.rpgSystemPrompt.replace(/{{baselineString}}/g, baselineJson);
 
     try {
-        console.log("FlushMonitor Pipeline [4/4]: Routing turn delta to RPG State Engine...");
+        const userPromptPayload = `### LATEST NARRATIVE TURN:\n${immediateLastMsg.name}: ${immediateLastMsg.mes.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()}`;
+        
+        const output = await executeRpgWorker(
+            profileName, 
+            systemPrompt,
+            userPromptPayload,
+            context
+        );
 
-        let baselineString = "### CURRENT ABSOLUTE VARIABLE VALUES:\n";
-        for (const [key, value] of Object.entries(settings.runtimeVariables || {})) {
-            baselineString += `${key} = ${JSON.stringify(value)}\n`;
+        if (output) {
+            parseAndApplyStateUpdates(output, settings, context);
+            await syncStateToLorebook(settings, context);
         }
-
-        const userPromptPayload = `${baselineString}\n\n### LATEST NARRATIVE TURN:\n${immediateLastMsg.name}: ${cleanText}`;
-
-        const payload = {
-            messages: [
-                { role: "system", content: settings.rpgSystemPrompt },
-                { role: "user", content: userPromptPayload }
-            ],
-            max_tokens: 1500,
-            temperature: 0.1
-        };
-
-        const response = await window.SillyTavern.api.request(settings.rpgWorkerProfile, payload);
-        const output = response?.choices?.[0]?.message?.content?.trim();
-
-        if (!output) throw new Error("RPG Worker Profile returned empty response.");
-
-        parseAndApplyStateUpdates(output, settings, context);
-        await syncStateToLorebook(settings);
-
-        if (typeof updateCountCb === 'function') {
-            updateCountCb();
-        }
-
     } catch (err) {
         console.error("FlushMonitor Pipeline [Error]: RPG State Engine processing failed.", err);
     }
@@ -154,15 +194,11 @@ function parseAndApplyStateUpdates(output, settings, context) {
     let variablesUpdated = false;
 
     try {
-        // Strip markdown blocks in case the AI wraps the JSON despite instructions
+        // Robust string strip for json validation blocks
         const cleanOutput = output.replace(/```json/gi, '').replace(/```/g, '').trim();
-        
-        // Parse the AI's JSON output
         const parsedState = JSON.parse(cleanOutput);
 
-        // Merge the parsed values into the runtime state
         for (const [key, value] of Object.entries(parsedState)) {
-            // Optional: You can add validation here to ensure only expected keys are merged
             settings.runtimeVariables[key] = value;
             variablesUpdated = true;
         }
@@ -172,32 +208,33 @@ function parseAndApplyStateUpdates(output, settings, context) {
     }
 
     if (variablesUpdated) {
-        context.saveSettingsObj();
+        safelySaveSettings(context);
     }
 }
 
 /**
  * Procedurally generates 4 distinct Lorebook cards from the runtime variable state.
  */
-export async function syncStateToLorebook(settings) {
-    if (!window.SillyTavern.worldinfo) throw new Error("World Info uninitialized.");
+export async function syncStateToLorebook(settings, context) {
+    const worldInfoContext = window.SillyTavern?.worldinfo || context?.worldinfo;
+    if (!worldInfoContext) {
+        console.warn("FlushMonitor [Lorebook Sync]: World Info system uninitialized or missing context.");
+        return;
+    }
     
     const lorebookName = settings.targetStateLorebook || "RPGLedger";
-    const worldInfoContext = window.SillyTavern.worldinfo;
     const targetBook = worldInfoContext.books?.[lorebookName] || worldInfoContext.current_books?.[lorebookName];
     
     if (!settings.cardUids) settings.cardUids = { stats: null, arts: null, artTree: null, inventory: null };
 
     const variables = settings.runtimeVariables || {};
     
-    // 1. Build Stats Markdown
     let statsMd = "";
     for (const [key, val] of Object.entries(variables)) {
         if (key === 'skills' || key === 'rpg_artTree' || key === 'inventory') continue;
         statsMd += `* **${key}**: ${val}\n`;
     }
 
-    // 2. Build Inventory Markdown
     let inventoryMd = "";
     if (Array.isArray(variables.inventory)) {
         variables.inventory.forEach(item => {
@@ -207,7 +244,6 @@ export async function syncStateToLorebook(settings) {
         });
     }
 
-    // 3. Formulate the Categories mapping
     const categories = {
         stats: statsMd.trim(),
         arts: Array.isArray(variables.skills) ? variables.skills.map(s => `* ${s}`).join('\n') : "",
@@ -215,7 +251,7 @@ export async function syncStateToLorebook(settings) {
         inventory: inventoryMd.trim()
     };
 
-    // 4. Inject or Update Lorebook Cards
+    // Sequential resolution loop to guarantee stable creation sequence execution across world info blocks
     for (const [cardType, content] of Object.entries(categories)) {
         if (!content) continue;
 
@@ -241,6 +277,6 @@ export async function syncStateToLorebook(settings) {
         }
     }
     
-    // Save updated UIDs to extension memory
-    SillyTavern.getContext().saveSettingsObj();
+    safelySaveSettings(context);
 }
+

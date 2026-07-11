@@ -1,3 +1,5 @@
+import { checkSimilarityAgainstLore } from './loreguard.js';
+
 /**
  * Default settings for the Summarizer subsystem.
  */
@@ -19,8 +21,9 @@ export const defaultSummarizerSettings = {
 
 /**
  * Processes sliding chat history nodes, generating atomic summarizations.
+ * FIX: Replaced broken window.SillyTavern.api request with the centralized workerExecutor
  */
-export async function processSummarizerStage(chat, settings, estimateTokensCb, executeFlushCb, updateCountCb, context) {
+export async function processSummarizerStage(chat, settings, estimateTokensCb, executeFlushCb, updateCountCb, context, workerExecutor) {
     if (chat.length <= settings.keepRawCount) return;
     
     // Auto-flush threshold trigger routes directly to the flush pass
@@ -60,7 +63,7 @@ export async function processSummarizerStage(chat, settings, estimateTokensCb, e
     }
 
     try {
-        console.log("FlushMonitor Pipeline [2/3]: Routing context to Summarizer worker...");
+        console.log(`FlushMonitor Pipeline [2/3]: Routing context to Summarizer profile [${settings.selectedProfile}]...`);
         
         const historySlice = chat.slice(targetIndex + 1, targetIndex + 21);
         let historyContextString = "";
@@ -75,17 +78,12 @@ export async function processSummarizerStage(chat, settings, estimateTokensCb, e
         }
         userPromptPayload += `Following is the message to summarize:\n${targetMessage.name}: ${targetMessage.mes}`;
 
-        const payload = {
-             messages: [
-                 { role: "system", content: settings.summarizerPrompt },
-                 { role: "user", content: userPromptPayload }
-             ],
-            max_tokens: settings.maxTokens,
-            temperature: 0.1 
-        };
-
-        const response = await window.SillyTavern.api.request(settings.selectedProfile, payload);
-        const summary = response?.choices?.[0]?.message?.content?.trim();
+        // FIX: Routed cleanly through the central execution bridge to avoid 403 / uninstantiated API errors
+        const summary = await workerExecutor(
+            settings.selectedProfile,
+            settings.summarizerPrompt,
+            userPromptPayload
+        );
 
         if (!summary) throw new Error("Connection Profile returned an empty summary payload.");
 

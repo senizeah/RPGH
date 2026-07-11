@@ -1,6 +1,3 @@
-/**
- * Default settings for the Prose Cleaner Subsystem.
- */
 export const defaultCleanerSettings = {
     cleanerEnabled: true,
     pruneEnabled: true,
@@ -10,9 +7,15 @@ export const defaultCleanerSettings = {
     customCleanFilters: ["(?:In conclusion|To summarize|Ultimately),? .+"].join("\n"),
 };
 
-/**
- * Trims un-finished sentences trailing at the end of a generation.
- */
+async function cmdLog(tag, message, level = 'info') {
+    const logPrefix = `[Flush-Monitor:${tag.toUpperCase()}]`;
+    const formattedMessage = typeof message === 'object' ? JSON.stringify(message, null, 2) : message;
+    
+    if (level === 'error') console.error(`%c${logPrefix} ${formattedMessage}`, "color: #ef4444; font-weight: bold;");
+    else if (level === 'warn') console.warn(`%c${logPrefix} ${formattedMessage}`, "color: #f59e0b;");
+    else console.log(`%c${logPrefix} ${formattedMessage}`, "color: #10b981; font-weight: bold;");
+}
+
 export function trimUnfinishedSentence(text) {
     if (!text) return text;
     const trimmed = text.trim();
@@ -25,22 +28,16 @@ export function trimUnfinishedSentence(text) {
     return trimmed;
 }
 
-/**
- * Ensures formatting bounds (quotes and asterisks) are balanced.
- */
 export function runStructuralPass(text) {
     if (!text) return text;
     let balanced = text;
 
-    // Balance unclosed dialogue quotes
     const quotes = (balanced.match(/"/g) || []).length;
     if (quotes % 2 !== 0) balanced += '"';
 
-    // Balance unclosed roleplay asterisks
     const asterisks = (balanced.match(/\*/g) || []).length;
     if (asterisks % 2 !== 0) balanced += '*';
     
-    // Repetition/Loop detection
     const sentences = balanced.match(/[^.!?]+[.!?]+/g) || [];
     if (sentences.length >= 3) {
         const last = sentences[sentences.length - 1].trim();
@@ -52,16 +49,8 @@ export function runStructuralPass(text) {
     return balanced.trim();
 }
 
-/**
- * Dynamic regular expression substitution and analysis engine.
- * Returns both the stripped text and whether any matches were detected.
- */
 export function runStylisticPass(text, rawRulesString) {
-    let result = {
-        text: text ? text.trim() : "",
-        hasMatches: false
-    };
-
+    let result = { text: text ? text.trim() : "", hasMatches: false };
     if (!text || !rawRulesString || !rawRulesString.trim()) return result;
 
     const lines = rawRulesString.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -74,7 +63,7 @@ export function runStylisticPass(text, rawRulesString) {
                 result.text = result.text.replace(regex, '');
             }
         } catch (e) {
-            console.error(`FlushMonitor [Regex Error]: Could not compile pattern "${pattern}"`, e);
+            cmdLog('regex_parser', `Heuristic matching processing failure on pattern "${pattern}": ${e.message}`, 'error');
         }
     });
 
@@ -82,19 +71,37 @@ export function runStylisticPass(text, rawRulesString) {
     return result;
 }
 
-/**
- * Orchestrates the full cleaner logic pipeline (Regex -> Passes -> API Worker Pass)
- */
+async function executeCleanerWorker(profileName, systemPrompt, userContent, context) {
+    const cleanPrompt = systemPrompt.replace(/"/g, '\\"');
+    const cleanContent = userContent.replace(/"/g, '\\"');
+    const macroString = `/profile-genstream "${profileName}" "${cleanPrompt}" "${cleanContent}"`;
+
+    try {
+        console.log(`[Cleaner Engine] Dispatching fire-and-forget to profile: "${profileName}"`);
+        window.SillyTavern.executeSlashCommands(macroString);
+    } catch (err) {
+        cmdLog('cleaner_worker', `Execution fault: ${err.message}`, 'error');
+    }
+}
+
 export async function processProseCleanerStage(chat, immediateLastMsg, settings, estimateTokensCb, context) {
-    const cleanText = immediateLastMsg.mes.trim();
+    await cmdLog('cleaner_pipeline', `Entering Prose Cleaner Pipeline Stage for Author: [${immediateLastMsg.name}]`, 'info');
+    
+    if (!immediateLastMsg.mes) {
+        immediateLastMsg.extra = immediateLastMsg.extra || {};
+        immediateLastMsg.extra.is_cleaned = true;
+        return;
+    }
+
+    let cleanText = immediateLastMsg.mes.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    
     const isOOC = cleanText.startsWith("[OOC:") || cleanText.startsWith("(OOC:") || cleanText.includes("[OOC]");
     const isCommand = cleanText.startsWith("/");
-    const isUnderSize = estimateTokensCb(cleanText) <= 30;
-
-    if (!immediateLastMsg.extra) immediateLastMsg.extra = {};
-    if (!immediateLastMsg.extra.raw_uncleaned) immediateLastMsg.extra.raw_uncleaned = immediateLastMsg.mes;
+    const tokensCount = estimateTokensCb(cleanText);
+    const isUnderSize = tokensCount <= 30;
 
     if (isOOC || isCommand || isUnderSize) {
+        immediateLastMsg.extra = immediateLastMsg.extra || {};
         immediateLastMsg.extra.is_cleaned = true;
         return;
     }
@@ -104,63 +111,41 @@ export async function processProseCleanerStage(chat, immediateLastMsg, settings,
     if (settings.pruneEnabled) {
         modifiedText = trimUnfinishedSentence(modifiedText);
     }
-
     modifiedText = runStructuralPass(modifiedText);
     
     const styleAnalysis = runStylisticPass(modifiedText, settings.customCleanFilters);
-
-    let shouldInvokeLLM = false;
-
-    if (settings.regexStyleEnabled) {
-        modifiedText = styleAnalysis.text;
-        if (settings.cleanerEnabled) {
-            shouldInvokeLLM = true;
-        }
-    } else {
-        if (settings.cleanerEnabled && styleAnalysis.hasMatches) {
-            shouldInvokeLLM = true; 
-            console.log("FlushMonitor Pipeline [Alert]: Style check failed via local regex. Flagging message for AI rewrite wrapper.");
-        }
-    }
+    let shouldInvokeLLM = (settings.regexStyleEnabled && settings.cleanerEnabled) || 
+                          (settings.cleanerEnabled && styleAnalysis.hasMatches);
 
     if (shouldInvokeLLM) {
-        try {
-            console.log("FlushMonitor Pipeline [1/3]: Routing generation to Prose Cleaner...");
-            const historyStart = Math.max(0, chat.length - settings.keepRawCount - 1);
-            const historySlice = chat.slice(historyStart, chat.length - 1);
-            let historyContextString = historySlice.map(m => `${m.name}: ${m.mes}`).join("\n");
+        const profiles = window.SillyTavern?.settings?.connectionManager?.profiles || [];
+        const profileObj = profiles.find(p => p.id === settings.cleanerProfile);
+        const profileName = profileObj ? profileObj.name : settings.cleanerProfile;
 
-            let userPromptPayload = "";
-            if (historyContextString) {
-                userPromptPayload += `Recent History for Context:\n${historyContextString}\n\n`;
-            }
-            userPromptPayload += `Target Message to Rewrite:\n${immediateLastMsg.name}: ${modifiedText}`;
+        console.log(`[Cleaner Engine] Mapping ID ${settings.cleanerProfile} to Name: "${profileName}"`);
 
-            const payload = {
-                messages: [
-                    { role: "system", content: settings.cleanerPrompt },
-                    { role: "user", content: userPromptPayload }
-                ],
-                max_tokens: 1500,
-                temperature: 0.3 
-            };
-
-            const response = await window.SillyTavern.api.request(settings.cleanerProfile, payload);
-            const cleanedOutput = response?.choices?.[0]?.message?.content?.trim();
-            
-            if (cleanedOutput && cleanedOutput.length > 0) {
-                modifiedText = cleanedOutput;
-            }
-        } catch (err) {
-            console.error("FlushMonitor Pipeline [Error]: Prose Cleaner API call failed. Falling back to unmodified text.", err);
-        }
-    }
-
-    if (modifiedText !== immediateLastMsg.mes) {
+        executeCleanerWorker(profileName, settings.cleanerPrompt, modifiedText, context);
+        
+        immediateLastMsg.extra = immediateLastMsg.extra || {};
+        immediateLastMsg.extra.is_cleaning = true;
+    } else {
         immediateLastMsg.mes = modifiedText;
-        await context.saveChat();
-        context.renderChat();
+        immediateLastMsg.extra = immediateLastMsg.extra || {};
+        immediateLastMsg.extra.is_cleaned = true;
     }
-    
-    immediateLastMsg.extra.is_cleaned = true;
 }
+
+window.SillyTavern?.eventSource?.on('background_gen_finished', (data) => {
+    if (!data?.text) return;
+    
+    const context = window.SillyTavern?.getContext();
+    const lastMsg = context?.chat?.[context.chat.length - 1];
+    
+    if (lastMsg && lastMsg.extra?.is_cleaning) {
+        console.log("[Cleaner Engine] Applying LLM-cleaned text to message.");
+        lastMsg.mes = data.text.trim();
+        lastMsg.extra.is_cleaning = false;
+        lastMsg.extra.is_cleaned = true;
+        window.SillyTavern?.updateChatDisplay?.();
+    }
+});

@@ -1,11 +1,18 @@
 /**
  * Simple character-to-token fallback approximation.
- * @param {string} text - The text to estimate tokens for.
+ * @param {string|Object} text - The text string or object to estimate tokens for.
  * @param {Object} settings - The extension settings containing wordsPerToken.
  * @returns {number} The estimated token count.
  */
 export function estimateTokens(text, settings) {
-    if (!text) return 0;
+    // FIX: If context object is accidentally passed here, look for its text or redirect it safely
+    if (text && typeof text === 'object') {
+        if (typeof text.mes === 'string') text = text.mes;
+        else return 0; 
+    }
+    
+    if (!text || typeof text !== 'string') return 0;
+    
     const wordCount = text.trim().split(/\s+/).filter(w => w.length > 0).length;
     return Math.ceil(wordCount / (settings.wordsPerToken || 4));
 }
@@ -14,7 +21,7 @@ export function estimateTokens(text, settings) {
  * Calculates all required token metrics for the RPGUI sidebar.
  * @param {Object} context - SillyTavern context.
  * @param {Object} settings - Extension settings.
- * @returns {Object} An object containing all calculated token metrics.
+ * @returns {Object} An object containing all calculated token metrics._
  */
 export function calculateTokenMetrics(context, settings) {
     const chat = context.chat || [];
@@ -31,40 +38,27 @@ export function calculateTokenMetrics(context, settings) {
         const isWithinKeepRaw = idx >= (chat.length - keepRawCount);
         const isSummarized = msg.extra?.is_summarized;
         const msgText = msg.mes || "";
-        const msgTokens = sumT(msgText);
-
+        
+        if (isSummarized) {
+            summaryTValue += sumT(msgText);
+        }
         if (isWithinKeepRaw) {
-            rawTValue += msgTokens;
-        } else {
-            if (isSummarized) {
-                summaryTValue += msgTokens;
-            } else {
-                rawTValue += msgTokens;
-            }
+            rawTValue += sumT(msgText);
         }
     });
 
     // 2. Lorebook Metrics
+    let lorebookTValue = 0;
+    const extensionBooks = [settings.targetLorebook, settings.targetStateLorebook];
+    
     const getBookTokenCount = (bookName) => {
-        const book = window.SillyTavern?.worldinfo?.books?.[bookName];
+        if (!bookName) return 0;
+        const book = context.lorebooks?.find(b => b.name === bookName);
         if (!book || !book.entries) return 0;
-        
-        const entries = Object.values(book.entries);
-        return entries.reduce((acc, entry) => {
-            if (entry.enabled && entry.constant) {
-                return acc + sumT(entry.content || "");
-            }
-            return acc;
-        }, 0);
+        return Object.values(book.entries).reduce((acc, entry) => acc + sumT(entry.content || ""), 0);
     };
 
-    // Dynamically calculate main Lorebook tokens by summing all books active in current session except the extension-managed ones
-    let lorebookTValue = 0;
-    const activeBookNames = window.SillyTavern?.worldinfo?.current_books || [];
-    const extensionBooks = [settings.targetLorebook, settings.targetStateLorebook];
-
-    // Fix: Iterating directly over array elements instead of their object keys
-    activeBookNames.forEach((bookName) => {
+    context.activeLorebooks?.forEach((bookName) => {
         if (!extensionBooks.includes(bookName)) {
             lorebookTValue += getBookTokenCount(bookName);
         }

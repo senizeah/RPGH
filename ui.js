@@ -251,10 +251,15 @@ function buildProseCleanerSection(container, settings, saveSettings, availablePr
         if (settings.cleanerProfile === prof.id) opt.selected = true;
         cleanerProfileSelectElement.appendChild(opt);
     });
-    cleanerProfileSelectElement.onchange = async () => {
-        settings.cleanerProfile = cleanerProfileSelectElement.value;
-        await saveSettings();
-    };
+	cleanerProfileSelectElement.onchange = async () => {
+		// Find the profile object to get its human-readable name
+		const selectedProf = availableProfiles.find(p => p.id === cleanerProfileSelectElement.value);
+		
+		// Save the name instead of the ID
+		settings.cleanerProfile = selectedProf ? selectedProf.name : cleanerProfileSelectElement.value;
+		
+		await saveSettings();
+	};
     container.appendChild(createSettingRow('Cleaner Worker Profile Alias', cleanerProfileSelectElement));
 
     const filterArea = document.createElement('textarea');
@@ -347,10 +352,13 @@ function buildRpgEngineSection(container, settings, saveSettings, availableProfi
         if (settings.rpgWorkerProfile === prof.id) opt.selected = true;
         rpgProfileSelectElement.appendChild(opt);
     });
-    rpgProfileSelectElement.onchange = async () => {
-        settings.rpgWorkerProfile = rpgProfileSelectElement.value;
-        await saveSettings();
-    };
+	// In your UI setup
+	rpgProfileSelectElement.onchange = async () => {
+		// Find the object associated with the selected value
+		const selectedProf = availableProfiles.find(p => p.id === rpgProfileSelectElement.value);
+		settings.rpgWorkerProfile = selectedProf.name; // Save the NAME, not the ID
+		await saveSettings();
+	};
     container.appendChild(createSettingRow('RPG State Engine Worker Profile', rpgProfileSelectElement));
 
     const inputRpgLorebook = document.createElement('input');
@@ -466,11 +474,15 @@ function buildGuardrailsSection(container, settings, saveSettings) {
  * ----------------------------------------------------------------------------
  */
 export function initializeExtensionUI(settings, saveSettings, executeManualFlush, getAvailableProfiles, onUiUpdateNeeded, getVariableEditAreaRef) {
-    // FIX 1: Target the third-party extensions panel instead of the core panel
     const panel = document.getElementById('extensions_settings2');
-    if (!panel || document.getElementById('flush-monitor-panel')) return null;
+    if (!panel) return null;
 
-    // FIX 2: Create the native SillyTavern inline-drawer structure
+    // Clear out duplicate broken wrapper remnants left behind by ST layout redraws
+    const oldPanel = document.getElementById('flush-monitor-panel');
+    if (oldPanel) {
+        oldPanel.remove();
+    }
+
     const mainWrapper = document.createElement('div');
     mainWrapper.id = 'flush-monitor-panel';
     mainWrapper.className = 'my-extension-settings'; 
@@ -478,7 +490,6 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
     const inlineDrawer = document.createElement('div');
     inlineDrawer.className = 'inline-drawer';
 
-    // --- DRAWER HEADER (Collapsible Toggle) ---
     const drawerHeader = document.createElement('div');
     drawerHeader.className = 'inline-drawer-toggle inline-drawer-header';
     
@@ -491,7 +502,6 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
     drawerHeader.appendChild(titleText);
     drawerHeader.appendChild(chevronIcon);
 
-    // --- DRAWER CONTENT (Where your UI goes) ---
     const drawerContent = document.createElement('div');
     drawerContent.className = 'inline-drawer-content';
 
@@ -511,25 +521,25 @@ export function initializeExtensionUI(settings, saveSettings, executeManualFlush
 
     const profiles = getAvailableProfiles();
 
-    buildCoreSlidingCacheSection(formContainer, settings, saveSettings, onUiUpdateNeeded);
-    buildFlushArchivalSection(formContainer, settings, saveSettings);
-    buildSummarizerSection(formContainer, settings, saveSettings, profiles);
-    buildProseCleanerSection(formContainer, settings, saveSettings, profiles);
+    // Fetch live reference pointer directly from global context map
+    const liveSettingsRef = window.SillyTavern.getContext().extensionSettings['flush-monitor'] || settings;
+
+    buildCoreSlidingCacheSection(formContainer, liveSettingsRef, saveSettings, onUiUpdateNeeded);
+    buildFlushArchivalSection(formContainer, liveSettingsRef, saveSettings);
+    buildSummarizerSection(formContainer, liveSettingsRef, saveSettings, profiles);
+    buildProseCleanerSection(formContainer, liveSettingsRef, saveSettings, profiles);
     
-    buildRpgEngineSection(formContainer, settings, saveSettings, profiles, () => {
+    buildRpgEngineSection(formContainer, liveSettingsRef, saveSettings, profiles, () => {
         window.dispatchEvent(new CustomEvent('flush-monitor:sidebar-config-changed'));
     }, getVariableEditAreaRef);
     
-    buildGuardrailsSection(formContainer, settings, saveSettings);
+    buildGuardrailsSection(formContainer, liveSettingsRef, saveSettings);
 
     drawerContent.appendChild(formContainer);
-
-    // --- ASSEMBLE THE DOM ---
     inlineDrawer.appendChild(drawerHeader);
     inlineDrawer.appendChild(drawerContent);
     mainWrapper.appendChild(inlineDrawer);
 
-    // Append to the extensions tab
     panel.appendChild(mainWrapper);
 
     return monitorElement;
