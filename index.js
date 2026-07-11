@@ -208,25 +208,25 @@
             if (stContext) {
                 let rawProfiles = null;
 
-                // 1. Resolve via connection manager request service
-                if (stContext.ConnectionManagerRequestService) {
+                // 1. Resolve via connection manager settings profiles (as per Example-index.js)
+                if (stContext.extensionSettings?.connectionManager?.profiles) {
+                    rawProfiles = stContext.extensionSettings.connectionManager.profiles;
+                }
+
+                // 2. Resolve via connection manager request service
+                if ((!rawProfiles || !Array.isArray(rawProfiles) || rawProfiles.length === 0) && stContext.ConnectionManagerRequestService) {
                     const service = stContext.ConnectionManagerRequestService;
                     rawProfiles = typeof service.getProfiles === 'function'
                         ? await service.getProfiles()
                         : (service.profiles || service.connectionProfiles);
                 }
 
-                // 2. Resolve via api settings fallback
+                // 3. Resolve via api settings fallback using requestSecure
                 if (!rawProfiles || !Array.isArray(rawProfiles) || rawProfiles.length === 0) {
                     try {
-                        const apiResponse = await fetch('/api/settings/get', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({})
-                        });
-
-                        if (apiResponse.ok) {
-                            const data = await apiResponse.json();
+                        const requestSecure = window.SillyTavern?.requestSecure || stContext?.requestSecure;
+                        if (typeof requestSecure === 'function') {
+                            const data = await requestSecure('/api/settings/get', {});
                             if (data && data.connection_profiles) {
                                 rawProfiles = data.connection_profiles;
                             }
@@ -304,14 +304,12 @@
 
                             if (!freshProfiles) {
                                 try {
-                                    const res = await fetch('/api/settings/get', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({})
-                                    });
-                                    if (res.ok) {
-                                        const d = await res.json();
-                                        freshProfiles = d?.connection_profiles;
+                                    const requestSecure = window.SillyTavern?.requestSecure || updateContext?.requestSecure;
+                                    if (typeof requestSecure === 'function') {
+                                        const d = await requestSecure('/api/settings/get', {});
+                                        if (d && d.connection_profiles) {
+                                            freshProfiles = d.connection_profiles;
+                                        }
                                     }
                                 } catch (e) {}
                             }
