@@ -20,8 +20,8 @@ export const defaultSummarizerSettings = {
 };
 
 async function executeSummarizerWorker(profileConfig, systemPrompt, userContent, context) {
-    console.log(`[Summarizer] Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
-
+    console.log(`[Summarizer]: Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
+    
     const finalizedPrompt = `### Instruction:\n${systemPrompt}\n\n${userContent}\n\n### Response:\n`;
 
     const payload = {
@@ -43,7 +43,7 @@ async function executeSummarizerWorker(profileConfig, systemPrompt, userContent,
         const response = await requestSecure('/api/textgen/generate', payload);
         return response?.text || response;
     } catch (err) {
-        console.error(`[Summarizer] Secure API processing failed:`, err);
+        console.error(`[Summarizer]: Secure API processing failed: ${err}`);
         throw err;
     }
 }
@@ -56,7 +56,7 @@ export async function processSummarizerStage(chat, settings, estimateTokensCb, e
     
     // Auto-flush threshold trigger routes directly to the flush pass
     if (settings.autoFlushEnabled && chat.length >= settings.autoFlushThreshold) {
-        console.log("[Summarizer] Auto-flush threshold hit. Bypassing summary for immediate rotation...");
+        console.log("[Summarizer]: Auto-flush threshold hit. Bypassing summary for immediate rotation...");
         await executeFlushCb();
         return;
     }
@@ -95,11 +95,11 @@ export async function processSummarizerStage(chat, settings, estimateTokensCb, e
         const profileObj = rawProfiles.find(p => p.id === settings.selectedProfile || p.name === settings.selectedProfile);
 
         if (!profileObj) {
-            console.warn(`[Summarizer] Targeted connection profile (${settings.selectedProfile}) missing from repository. Skipping summarization.`);
+            console.warn(`[Summarizer]: Targeted connection profile (${settings.selectedProfile}) missing from repository. Skipping summarization.`);
             return;
         }
 
-        console.log(`[Summarizer] Mapping profile ID ${settings.selectedProfile} to config: "${profileObj.name}"`);
+        console.log(`[Summarizer]: Mapping profile ID ${settings.selectedProfile} to config: "${profileObj.name}"`);
         
         const historySlice = chat.slice(targetIndex + 1, targetIndex + 21);
         let historyContextString = "";
@@ -132,8 +132,8 @@ export async function processSummarizerStage(chat, settings, estimateTokensCb, e
 
         await context.saveChat();
         updateCountCb();
-        console.log("[Summarizer] Successfully saved atomic message summary.");
+        console.log("[Summarizer]: Successfully saved atomic message summary.");
     } catch (err) {
-        console.error("[Summarizer] Summary sequence failed:", err);
+        console.error(`[Summarizer]: Summary sequence failed: ${err}`);
     }
 }
