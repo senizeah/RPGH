@@ -104,7 +104,7 @@ function safelySaveSettings(context) {
 }
 
 async function executeRpgWorker(profileConfig, systemPrompt, userContent, context) {
-    console.log(`[RPGHelper] Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
+    console.log(`[RPGHelper]: Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
 
     const finalizedPrompt = `### Instruction:\n${systemPrompt}\n\n${userContent}\n\n### Response:\n`;
 
@@ -127,7 +127,7 @@ async function executeRpgWorker(profileConfig, systemPrompt, userContent, contex
         const response = await requestSecure('/api/textgen/generate', payload);
         return response?.text || response;
     } catch (err) {
-        console.error(`[RPGHelper] Secure API processing failed:`, err);
+        console.error(`[RPGHelper]: Secure API processing failed: ${err}`);
         throw err;
     }
 }
@@ -143,16 +143,16 @@ export async function processRpgStateStage(chat, settings, context) {
     if (!immediateLastMsg || !immediateLastMsg.mes) return;
 
     const rawProfiles = context?.allProfilesRepository || window.SillyTavern?.getContext()?.allProfilesRepository || [];
-    console.log(`[RPGHelper] Raw settings.rpgWorkerProfile: "${settings.rpgWorkerProfile}"`);
+    console.log(`[RPGHelper]: Raw settings.rpgWorkerProfile: "${settings.rpgWorkerProfile}"`);
 
     const profileObj = rawProfiles.find(p => p.id === settings.rpgWorkerProfile || p.name === settings.rpgWorkerProfile);
 
     if (!profileObj) {
-        console.warn(`[RPGHelper] Targeted connection profile (${settings.rpgWorkerProfile}) missing from repository. Skipping RPG calculations.`);
+        console.warn(`[RPGHelper]: Targeted connection profile (${settings.rpgWorkerProfile}) missing from repository. Skipping RPG calculations.`);
         return;
     }
 
-    console.log(`[RPGHelper] Mapping profile ID ${settings.rpgWorkerProfile} to config: "${profileObj.name}"`);
+    console.log(`[RPGHelper]: Mapping profile ID ${settings.rpgWorkerProfile} to config: "${profileObj.name}"`);
 
     const baselineJson = JSON.stringify(settings.runtimeVariables, null, 2);
     const systemPrompt = settings.rpgSystemPrompt.replace(/{{baselineString}}/g, baselineJson);
@@ -172,7 +172,7 @@ export async function processRpgStateStage(chat, settings, context) {
             await syncStateToLorebook(settings, context);
         }
     } catch (err) {
-        console.error("[RPGHelper] RPG State Engine processing failed:", err);
+        console.error(`[RPGHelper]: RPG State Engine processing failed: ${err}`);
     }
 }
 
@@ -190,8 +190,8 @@ function parseAndApplyStateUpdates(output, settings, context) {
             variablesUpdated = true;
         }
     } catch (e) {
-        console.error("FlushMonitor Pipeline [Error]: Failed to parse RPG state JSON.", e);
-        console.warn("Raw LLM Output was:", output);
+        console.error(`[RPGHelper]: Failed to parse RPG state JSON.`, e);
+        console.warn(`[RPGHelper]: Raw LLM Output was:`, output);
     }
 
     if (variablesUpdated) {
@@ -205,7 +205,7 @@ function parseAndApplyStateUpdates(output, settings, context) {
 export async function syncStateToLorebook(settings, context) {
     const worldInfoContext = window.SillyTavern?.worldinfo || context?.worldinfo;
     if (!worldInfoContext) {
-        console.warn("FlushMonitor [Lorebook Sync]: World Info system uninitialized or missing context.");
+        console.warn(`[RPGHelper]: World Info system uninitialized or missing context.`);
         return;
     }
     
