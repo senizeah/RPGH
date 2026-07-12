@@ -64,7 +64,7 @@ export function runStylisticPass(text, rawRulesString) {
 }
 
 async function executeCleanerWorker(profileConfig, systemPrompt, userContent, context) {
-    console.log(`[ProseCleaner] Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
+    console.log(`[ProseCleaner]: Dispatching secure textgen/generate API call using profile: "${profileConfig.name}"`);
     
     const finalizedPrompt = `### Instruction:\n${systemPrompt}\n\n${userContent}\n\n### Response:\n`;
 
@@ -87,7 +87,7 @@ async function executeCleanerWorker(profileConfig, systemPrompt, userContent, co
         const response = await requestSecure('/api/textgen/generate', payload);
         return response?.text || response;
     } catch (err) {
-        console.error(`[ProseCleaner] Secure API processing failed:`, err);
+        console.error(`[ProseCleaner]: Secure API processing failed: ${err}`);
         throw err;
     }
 }
