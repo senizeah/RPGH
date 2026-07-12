@@ -57,7 +57,6 @@
                 }
 
                 // 2. Load worker and execute
-                // We use a closure to capture the current helperName and profile for the promise
                 const task = (async () => {
                     try {
                         const module = await import(`${baseModuleURL}/${manifest.file}`);
@@ -67,29 +66,30 @@
                             throw new Error(`Exported function ${manifest.exec} not found in ${manifest.file}`);
                         }
 
-                        // Note: We pass parameters based on what the specific worker expects.
-                        // This requires the orchestrator to be aware of the specific signatures.
+                        // The orchestrator passes the specific profile identified for this helper
+                        // to ensure we aren't relying on the worker's internal lookup of 'settings.helperProfile'.
                         if (helperName === 'cleaner') {
-                            // cleaner expects: (chat, immediateLastMsg, settings, estimateTokensCb, context)
-                            // However, cleaner.js uses settings.cleanerProfile internally. 
-                            // To be compliant with the user's request to use the DIRECT profile from settings:
-                            // We will pass the context and let the worker handle the rest, OR 
-                            // pass the specific parameters if we want to be surgical.
-                            // Looking at cleaner.js: it takes (chat, immediateLastMsg, settings, estimateTokensCb, context)
-                            // and then it does its own lookup. 
-                            // To fix the "user sets helper in settings" requirement, we will pass the settings 
-                            // that have been updated by the UI.
-                            
-                            // For the purpose of this orchestrator, we'll assume the 'settings' are part of the context 
-                            // or provided. Since this is a background pipeline, we'll simulate the 'chat' 
-                            // by passing the context's chat.
-                            await executeFunc(context.chat, context.chat[context.chat.length - 1], context.extensionSettings, context.estimateTokensCb, context);
+                            // cleaner.js: processProseCleanerStage(chat, immediateLastMsg, settings, estimateTokensCb, context)
+                            // We override the settings object to use the specific profile selected by the user
+                            const overriddenSettings = { 
+                                ...context.extensionSettings, 
+                                cleanerProfile: profile.id || profile.name 
+                            };
+                            await executeFunc(context.chat, context.chat[context.chat.length - 1], overriddenSettings, context.estimateTokensCb, context);
                         } else if (helperName === 'summarizer') {
-                            // summarizer expects: (chat, settings, estimateTokensCb, executeFlushCb, updateCountCb, context)
-                            await executeFunc(context.chat, context.extensionSettings, context.estimateTokensCb, context.executeFlush, updateCountCb, context);
+                            // summarizer.js: processSummarizerStage(chat, settings, estimateTokensCb, executeFlushCb, updateCountCb, context)
+                            const overriddenSettings = { 
+                                ...context.extensionSettings, 
+                                selectedProfile: profile.id || profile.name 
+                            };
+                            await executeFunc(context.chat, overriddenSettings, context.estimateTokensCb, context.executeFlush, updateCountCb, context);
                         } else if (helperName === 'rpg') {
-                            // rpg expects: (chat, settings, context)
-                            await executeFunc(context.chat, context.extensionSettings, context);
+                            // rpgh.js: processRpgStateStage(chat, settings, context)
+                            const overriddenSettings = { 
+                                ...context.extensionSettings, 
+                                rpgWorkerProfile: profile.id || profile.name 
+                            };
+                            await executeFunc(context.chat, overriddenSettings, context);
                         }
 
                         resultsMap[helperName] = { success: true };
