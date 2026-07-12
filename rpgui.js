@@ -10,6 +10,7 @@ function closeActiveModal() {
         console.log("[RPGUI]: Active modal closed.");
     }
 }
+}
 
 function showRpgModal(titleText, contentElement, width = "400px") {
     console.log(`[RPGUI]: Showing RPG modal: "${titleText}"`);
