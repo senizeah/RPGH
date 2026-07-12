@@ -45,6 +45,13 @@ export async function executeFlushToLorebook(settings, updateCountCb, context) {
             throw new Error("World Info systems uninitialized or missing from runtime context.");
         }
 
+        const targetLorebook = settings.targetLorebook;
+        let targetBook = worldInfoContext.books?.[targetLorebook] || worldInfoContext.current_books?.[targetLorebook];
+        if (targetLorebook && !targetBook) {
+            console.log(`[FlushMonitor]: Target ledger "${targetLorebook}" not found. Creating new lorebook...`);
+            await worldInfoContext.createBook(targetLorebook);
+        }
+
         const chunkSize = settings.chunkSize;
         let chunkIndex = 1;
 

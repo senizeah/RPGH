@@ -100,6 +100,16 @@ export async function processSummarizerStage(chat, settings, estimateTokensCb, e
         }
 
         console.log(`[Summarizer]: Mapping profile ID ${settings.selectedProfile} to config: "${profileObj.name}"`);
+
+        const worldInfoContext = window.SillyTavern?.worldinfo || context?.worldinfo;
+        if (worldInfoContext) {
+            const lorebookName = settings.targetLorebook || "ChapterLedger";
+            let targetBook = worldInfoContext.books?.[lorebookName] || worldInfoContext.current_books?.[lorebookName];
+            if (!targetBook) {
+                console.log(`[Summarizer]: Target ledger "${lorebookName}" not found. Creating new lorebook...`);
+                await worldInfoContext.createBook(lorebookName);
+            }
+        }
         
         const historySlice = chat.slice(targetIndex + 1, targetIndex + 21);
         let historyContextString = "";
