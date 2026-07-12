@@ -143,9 +143,7 @@ export async function processRpgStateStage(chat, settings, context) {
     if (!immediateLastMsg || !immediateLastMsg.mes) return;
 
     const rawProfiles = context?.allProfilesRepository || window.SillyTavern?.getContext()?.allProfilesRepository || [];
-    console.log(`[RPGHelper]: Raw settings.rpgWorkerProfile: "${settings.rpgWorkerProfile}"`);
-
-    const profileObj = rawProfiles.find(p => p.id === settings.rpgWorkerProfile || p.name === settings.rpgWorkerProfile);
+    const profileObj = rawProfiles.find(p => String(p.id) === String(settings.rpgWorkerProfile) || p.name === settings.rpgWorkerProfile);
 
     if (!profileObj) {
         console.warn(`[RPGHelper]: Targeted connection profile (${settings.rpgWorkerProfile}) missing from repository. Skipping RPG calculations.`);
