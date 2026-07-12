@@ -526,3 +526,17 @@ export function updateProfileDropdowns(profiles, settings) {
         });
     });
 }
+</file_content>
+<task_progress>
+- [x] Standardize logging in `cleaner.js` to `[ProseCleaner]`
+- [x] Standardize logging in `summarizer.js` to `[Summarizer]`
+- [x] Add ledger existence check and creation in `rpgh.js`
+- [x] Add ledger existence check and creation in `summarizer.js`
+- [x] Add ledger existence check and creation in `flush.js`
+- [x] Standardize logging in `rpgh.js` to `[RPGHelper]: `
+- [x] Standardize logging in `loreguard.js` to `[LoreGuard]: `
+- [x] Standardize logging in `lock.js` to `[FormattingLock]: `
+- [x] Standardize logging in `rpgui.js` to `[RPGUI]: `
+- [x] Standardize logging in `ui.js` to `[UI]: `
+</task_progress>
+</write_to_file>
