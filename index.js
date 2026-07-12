@@ -214,9 +214,11 @@
                 }
 
                 // 1. Resolve via connection manager settings profiles (as per Example-index.js)
-                if (stContext.extensionSettings?.connectionManager?.profiles) {
-                    rawProfiles = stContext.extensionSettings.connectionManager.profiles;
-                    logTelemetry('ProfileManager', `Method 1 success: Found ${rawProfiles.length} profiles in connectionManager.profiles`, 'info');
+                const connManager = stContext.extensionSettings?.connectionManager || stContext?.connectionManager;
+                if (connManager?.profiles) {
+                    rawProfiles = connManager.profiles;
+                    const source = stContext.extensionSettings?.connectionManager ? 'extensionSettings' : 'root';
+                    logTelemetry('ProfileManager', `Method 1 success: Found ${rawProfiles.length} profiles via ${source}.`, 'info');
                 }
 
                 // 2. Resolve via connection manager request service
