@@ -189,13 +189,13 @@
 
         try {
             // Dynamically load modules one-by-one as per user's preference
-            uiModule = await import(`${baseModuleURL}/ui.js`);
-            cleanerModule = await import(`${baseModuleURL}/cleaner.js`);
-            summarizerModule = await import(`${baseModuleURL}/summarizer.js`);
-            rpghModule = await import(`${baseModuleURL}/rpgh.js`);
-            rpguiModule = await import(`${baseModuleURL}/rpgui.js`);
-            flushModule = await import(`${baseModuleURL}/flush.js`);
-            tokenModule = await import(`${baseModuleURL}/token.js`);
+            try { uiModule = await import(`${baseModuleURL}/ui.js`); } catch (e) { throw new Error(`Failed to import ui.js: ${e.message}`); }
+            try { cleanerModule = await import(`${baseModuleURL}/cleaner.js`); } catch (e) { throw new Error(`Failed to import cleaner.js: ${e.message}`); }
+            try { summarizerModule = await import(`${baseModuleURL}/summarizer.js`); } catch (e) { throw new Error(`Failed to import summarizer.js: ${e.message}`); }
+            try { rpghModule = await import(`${baseModuleURL}/rpgh.js`); } catch (e) { throw new Error(`Failed to import rpgh.js: ${e.message}`); }
+            try { rpguiModule = await import(`${baseModuleURL}/rpgui.js`); } catch (e) { throw new Error(`Failed to import rpgui.js: ${e.message}`); }
+            try { flushModule = await import(`${baseModuleURL}/flush.js`); } catch (e) { throw new Error(`Failed to import flush.js: ${e.message}`); }
+            try { tokenModule = await import(`${baseModuleURL}/token.js`); } catch (e) { throw new Error(`Failed to import token.js: ${e.message}`); }
 
             const stContext = window.SillyTavern?.getContext(); // Use window.SillyTavern.getContext() directly
 
