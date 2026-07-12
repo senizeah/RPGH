@@ -210,8 +210,14 @@ export async function syncStateToLorebook(settings, context) {
     }
     
     const lorebookName = settings.targetStateLorebook || "RPGLedger";
-    const targetBook = worldInfoContext.books?.[lorebookName] || worldInfoContext.current_books?.[lorebookName];
+    let targetBook = worldInfoContext.books?.[lorebookName] || worldInfoContext.current_books?.[lorebookName];
     
+    if (!targetBook) {
+        console.log(`[RPGHelper]: Target ledger "${lorebookName}" not found. Creating new lorebook...`);
+        await worldInfoContext.createBook(lorebookName);
+        targetBook = worldInfoContext.books?.[lorebookName] || worldInfoContext.current_books?.[lorebookName];
+    }
+
     if (!settings.cardUids) settings.cardUids = { stats: null, arts: null, artTree: null, inventory: null };
 
     const variables = settings.runtimeVariables || {};
