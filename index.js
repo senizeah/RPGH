@@ -202,13 +202,26 @@
             if (stContext) {
                 let rawProfiles = null;
 
+                // DEBUG: Inspect stContext structure
+                logTelemetry('ProfileManager', `DEBUG: stContext.extensionSettings exists: ${!!stContext.extensionSettings}`, 'info');
+                if (stContext.extensionSettings) {
+                    logTelemetry('ProfileManager', `DEBUG: extensionSettings keys: ${Object.keys(stContext.extensionSettings).join(', ')}`, 'info');
+                    if (stContext.extensionSettings.connectionManager) {
+                        logTelemetry('ProfileManager', `DEBUG: connectionManager exists. Profiles count: ${stContext.extensionSettings.connectionManager.profiles?.length || 0}`, 'info');
+                    } else {
+                        logTelemetry('ProfileManager', `DEBUG: connectionManager is MISSING from extensionSettings.`, 'warn');
+                    }
+                }
+
                 // 1. Resolve via connection manager settings profiles (as per Example-index.js)
                 if (stContext.extensionSettings?.connectionManager?.profiles) {
                     rawProfiles = stContext.extensionSettings.connectionManager.profiles;
+                    logTelemetry('ProfileManager', `Method 1 success: Found ${rawProfiles.length} profiles in connectionManager.profiles`, 'info');
                 }
 
                 // 2. Resolve via connection manager request service
                 if ((!rawProfiles || !Array.isArray(rawProfiles) || rawProfiles.length === 0) && stContext.ConnectionManagerRequestService) {
+                    logTelemetry('ProfileManager', 'Method 1 failed or empty. Trying Method 2 (Request Service)...', 'info');
                     const service = stContext.ConnectionManagerRequestService;
                     rawProfiles = typeof service.getProfiles === 'function'
                         ? await service.getProfiles()
