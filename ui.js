@@ -138,6 +138,7 @@ function buildSummarizerSection(container, settings, saveSettings, availableProf
     subheaderNet.innerText = '⚙️ Summarizer Worker Routing';
     subheaderNet.style = 'margin: 10px 0 5px 0; font-weight: bold; color: #fbbf24; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
     console.log("[UI]: Building Summarizer section.");
+    console.log("[UI]: Building Summarizer section.");
     container.appendChild(subheaderNet);
 
     const profileSelectElement = document.createElement('select');
@@ -197,6 +198,7 @@ function buildProseCleanerSection(container, settings, saveSettings, availablePr
     const subheaderCleaner = document.createElement('div');
     subheaderCleaner.innerText = '🧹 AI Prose Cleaner & Formatting';
     subheaderCleaner.style = 'margin: 15px 0 5px 0; font-weight: bold; color: #38bdf8; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
+    console.log("[UI]: Building Prose Cleaner section.");
     console.log("[UI]: Building Prose Cleaner section.");
     container.appendChild(subheaderCleaner);
 
@@ -291,6 +293,7 @@ function buildRpgEngineSection(container, settings, saveSettings, availableProfi
     const subheaderRpg = document.createElement('div');
     subheaderRpg.innerText = '📊 Automated RPG State Engine';
     subheaderRpg.style = 'margin: 15px 0 5px 0; font-weight: bold; color: #a78bfa; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
+    console.log("[UI]: Building RPG Engine section.");
     console.log("[UI]: Building RPG Engine section.");
     container.appendChild(subheaderRpg);
 
@@ -405,6 +408,7 @@ function buildGuardrailsSection(container, settings, saveSettings) {
     const subheaderGuardrails = document.createElement('div');
     subheaderGuardrails.innerText = '🛠️ Advanced Extension Guardrails';
     subheaderGuardrails.style = 'margin: 15px 0 5px 0; font-weight: bold; color: #a78bfa; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 3px;';
+    console.log("[UI]: Building Guardrails section.");
     console.log("[UI]: Building Guardrails section.");
     container.appendChild(subheaderGuardrails);
 
