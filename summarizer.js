@@ -92,7 +92,7 @@ export async function processSummarizerStage(chat, settings, estimateTokensCb, e
 
     try {
         const rawProfiles = context?.allProfilesRepository || window.SillyTavern?.getContext()?.allProfilesRepository || [];
-        const profileObj = rawProfiles.find(p => p.id === settings.selectedProfile || p.name === settings.selectedProfile);
+        const profileObj = rawProfiles.find(p => String(p.id) === String(settings.selectedProfile) || p.name === settings.selectedProfile);
 
         if (!profileObj) {
             console.warn(`[Summarizer]: Targeted connection profile (${settings.selectedProfile}) missing from repository. Skipping summarization.`);
