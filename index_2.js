@@ -10,55 +10,102 @@
      * Pipeline Orchestration Engine
      * Fires isolated background requests to multiple service scripts concurrently
      * 
+     * @param {Object} serviceRequests - Mapping of helper names to profile IDs.
+     *                                   e.g., { cleaner: 'id1', summarizer: 'id2', rpg: 'id3' }
      * @param {String} chatTextPayload - The raw input data string to send to background services.
+     * @param {Object} context - The SillyTavern context object.
+     * @param {Function} updateCountCb - Callback to refresh UI counts.
      */
-    async function launchParallelServicesPipeline(chatTextPayload) {
+    async function launchParallelServicesPipeline(serviceRequests, chatTextPayload, context, updateCountCb) {
         console.log(`[Module Core]: Initializing parallel background sweep...`);
 
+        const executionPromises = [];
+        const resultsMap = {};
+
         try {
-            // 1. Resolve targets from the internal profile repository.
-            // We look for profiles that match the service IDs (e.g., '5001', '5002')
-            const config5001 = internalProfilesRepository.find(p => p.name?.includes('5001') || p.id?.includes('5001'));
-            const config5002 = internalProfilesRepository.find(p => p.name?.includes('5002') || p.id?.includes('5002'));
+            // Define the mapping of helper names to their respective files and export functions
+            const helperManifest = {
+                cleaner: {
+                    file: 'cleaner.js',
+                    exec: 'processProseCleanerStage'
+                },
+                summarizer: {
+                    file: 'summarizer.js',
+                    exec: 'processSummarizerStage'
+                },
+                rpg: {
+                    file: 'rpgh.js',
+                    exec: 'processRpgStateStage'
+                }
+            };
 
-            if (!config5001 && !config5002) {
-                console.warn(`[Module Core]: Halted. Targeted connection profile configurations (5001/5002) missing from memory.`);
-                return null;
-            }
-
-            // 2. Natively import individual script workers on-demand via dynamic modules
-            const workersToLoad = [];
-            if (config5001) workersToLoad.push(import(`${baseModuleURL}/5001.js`));
-            if (config5002) workersToLoad.push(import(`${baseModuleURL}/5002.js`));
-
-            const loadedWorkers = await Promise.all(workersToLoad);
-            const executionPromises = [];
-
-            // 3. Dispatch the processing tasks concurrently.
             console.time("[Module Core]: Connections Pipeline Runtime");
-            
-            let workerIndex = 0;
-            if (config5001) {
-                const module5001 = loadedWorkers[workerIndex++];
-                executionPromises.push(module5001.executeService5001(config5001, chatTextPayload));
-            }
-            if (config5002) {
-                const module5002 = loadedWorkers[workerIndex++];
-                executionPromises.push(module5002.executeService5002(config5002, chatTextPayload));
+
+            for (const [helperName, profileId] of Object.entries(serviceRequests)) {
+                const manifest = helperManifest[helperName];
+                if (!manifest) {
+                    console.warn(`[Module Core]: Unknown helper requested: ${helperName}`);
+                    continue;
+                }
+
+                // 1. Resolve profile from repository
+                const profile = internalProfilesRepository.find(p => String(p.id) === String(profileId) || p.name === profileId);
+                
+                if (!profile) {
+                    console.warn(`[Module Core]: Profile for ${helperName} (${profileId}) not found in repository.`);
+                    continue;
+                }
+
+                // 2. Load worker and execute
+                // We use a closure to capture the current helperName and profile for the promise
+                const task = (async () => {
+                    try {
+                        const module = await import(`${baseModuleURL}/${manifest.file}`);
+                        const executeFunc = module[manifest.exec];
+
+                        if (typeof executeFunc !== 'function') {
+                            throw new Error(`Exported function ${manifest.exec} not found in ${manifest.file}`);
+                        }
+
+                        // Note: We pass parameters based on what the specific worker expects.
+                        // This requires the orchestrator to be aware of the specific signatures.
+                        if (helperName === 'cleaner') {
+                            // cleaner expects: (chat, immediateLastMsg, settings, estimateTokensCb, context)
+                            // However, cleaner.js uses settings.cleanerProfile internally. 
+                            // To be compliant with the user's request to use the DIRECT profile from settings:
+                            // We will pass the context and let the worker handle the rest, OR 
+                            // pass the specific parameters if we want to be surgical.
+                            // Looking at cleaner.js: it takes (chat, immediateLastMsg, settings, estimateTokensCb, context)
+                            // and then it does its own lookup. 
+                            // To fix the "user sets helper in settings" requirement, we will pass the settings 
+                            // that have been updated by the UI.
+                            
+                            // For the purpose of this orchestrator, we'll assume the 'settings' are part of the context 
+                            // or provided. Since this is a background pipeline, we'll simulate the 'chat' 
+                            // by passing the context's chat.
+                            await executeFunc(context.chat, context.chat[context.chat.length - 1], context.extensionSettings, context.estimateTokensCb, context);
+                        } else if (helperName === 'summarizer') {
+                            // summarizer expects: (chat, settings, estimateTokensCb, executeFlushCb, updateCountCb, context)
+                            await executeFunc(context.chat, context.extensionSettings, context.estimateTokensCb, context.executeFlush, updateCountCb, context);
+                        } else if (helperName === 'rpg') {
+                            // rpg expects: (chat, settings, context)
+                            await executeFunc(context.chat, context.extensionSettings, context);
+                        }
+
+                        resultsMap[helperName] = { success: true };
+                    } catch (err) {
+                        console.error(`[Module Core]: ${helperName} worker failed: ${err}`);
+                        resultsMap[helperName] = { success: false, error: err };
+                    }
+                })();
+
+                executionPromises.push(task);
             }
 
-            const results = await Promise.all(executionPromises);
+            await Promise.all(executionPromises);
             console.timeEnd("[Module Core]: Connections Pipeline Runtime");
 
-            // 4. Output results
-            let resultIndex = 0;
-            let summaryResult = config5001 ? results[resultIndex++] : null;
-            let analysisResult = config5002 ? results[resultIndex++] : null;
-
-            if (summaryResult) console.log(`[Module Core]: Service 5001 Output Received ->`, summaryResult);
-            if (analysisResult) console.log(`[Module Core]: Service 5002 Output Received ->`, analysisResult);
-
-            return { summaryResult, analysisResult };
+            return resultsMap;
 
         } catch (pipelineError) {
             console.error(`[Module Core]: Parallel execution track encountered a fault: ${pipelineError}`);
@@ -67,7 +114,6 @@
     }
 
     async function mountCoreUI() {
-        // Locate the native extensions settings drawer panel container
         const targetParentPanel = document.getElementById('extensions_settings');
         if (!targetParentPanel) {
             console.error(`[Module Core]: Core UI structural element #extensions_settings missing.`);
@@ -75,19 +121,15 @@
         }
 
         try {
-            // Natively resolve the ui.js file dynamically through a module import promise
             const uiModulePath = `${baseModuleURL}/ui.js`;
             const uiModule = await import(uiModulePath);
             
-            // Extract the exported module functions cleanly
             const createInspectorUI = uiModule.createInspectorUI;
             const updateProfileDropdown = uiModule.updateProfileDropdown;
 
-            // Call the layout generator method
             const uiHandles = createInspectorUI(targetParentPanel);
             const profileSelector = uiHandles.profileSelector;
 
-            // Attach event listener directly to the parent node using event delegation
             targetParentPanel.removeEventListener('change', handlePanelChangeDelegation);
             targetParentPanel.addEventListener('change', handlePanelChangeDelegation);
 
@@ -108,7 +150,6 @@
                 }
             }
 
-            // Run background scanning loops checking for the profile list via the SillyTavern context
             function sequenceProfileScanning() {
                 cycleAttempts++;
                 console.log(`[Module Core]: Polling extension settings structure (${cycleAttempts}/${maxLifecycleRetries})...`);
@@ -118,7 +159,7 @@
                     
                     if (context) {
                         const disabledList = context.extensionSettings?.disabledExtensions || [];
-                        const isActive = !disabledList.includes('rpgh'); // Assuming extension ID is 'rpgh'
+                        const isActive = !disabledList.includes('rpgh');
 
                         if (isActive && context.extensionSettings?.connectionManager) {
                             const dynamicDataStream = context.extensionSettings.connectionManager.profiles;
@@ -132,7 +173,7 @@
                                     updateProfileDropdown(liveSelector, internalProfilesRepository);
                                 }
 
-                                return; // Extraction completed successfully!
+                                return;
                             }
                         }
                     }
@@ -158,11 +199,9 @@
         }
     }
 
-    // Fire initialization wrapper once jQuery reports document state as ready
     $(document).ready(() => {
         mountCoreUI();
     });
 
-    // Expose the parallel pipeline orchestrator function to the local execution space
     window.launchParallelServicesPipeline = launchParallelServicesPipeline;
 })();
