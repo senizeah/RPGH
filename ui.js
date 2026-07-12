@@ -149,7 +149,7 @@ function buildSummarizerSection(container, settings, saveSettings, availableProf
         const opt = document.createElement('option');
         opt.value = prof.id;
         opt.innerText = prof.name;
-        if (settings.selectedProfile === prof.id || settings.selectedProfile === prof.name) opt.selected = true;
+        if (String(settings.selectedProfile) === String(prof.id) || settings.selectedProfile === prof.name) opt.selected = true;
         profileSelectElement.appendChild(opt);
     });
     profileSelectElement.onchange = async () => {
@@ -236,7 +236,7 @@ function buildProseCleanerSection(container, settings, saveSettings, availablePr
         const opt = document.createElement('option');
         opt.value = prof.id;
         opt.innerText = prof.name;
-        if (settings.cleanerProfile === prof.id || settings.cleanerProfile === prof.name) opt.selected = true;
+        if (String(settings.cleanerProfile) === String(prof.id) || settings.cleanerProfile === prof.name) opt.selected = true;
         cleanerProfileSelectElement.appendChild(opt);
     });
     cleanerProfileSelectElement.onchange = async () => {
@@ -333,7 +333,7 @@ function buildRpgEngineSection(container, settings, saveSettings, availableProfi
         const opt = document.createElement('option');
         opt.value = prof.id;
         opt.innerText = prof.name;
-        if (settings.rpgWorkerProfile === prof.id || settings.rpgWorkerProfile === prof.name) opt.selected = true;
+        if (String(settings.rpgWorkerProfile) === String(prof.id) || settings.rpgWorkerProfile === prof.name) opt.selected = true;
         rpgProfileSelectElement.appendChild(opt);
     });
     rpgProfileSelectElement.onchange = async () => {
@@ -515,11 +515,11 @@ export function updateProfileDropdowns(profiles, settings) {
         
         profiles.forEach(prof => {
             const opt = document.createElement('option');
-            opt.value = prof.id || prof.name;
+            opt.value = (prof.id !== undefined && prof.id !== null && prof.id !== '') ? prof.id : prof.name;
             opt.innerText = prof.name;
             
             // Re-apply the stored selected value
-            if (settings[settingKey] === opt.value || settings[settingKey] === prof.name) {
+            if (String(settings[settingKey]) === String(opt.value) || settings[settingKey] === prof.name) {
                 opt.selected = true;
             }
             el.appendChild(opt);
