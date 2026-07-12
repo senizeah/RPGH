@@ -7,10 +7,12 @@ function closeActiveModal() {
     if (activeModalElement) {
         activeModalElement.remove();
         activeModalElement = null;
+        console.log("[RPGUI]: Active modal closed.");
     }
 }
 
 function showRpgModal(titleText, contentElement, width = "400px") {
+    console.log(`[RPGUI]: Showing RPG modal: "${titleText}"`);
     closeActiveModal();
 
     activeModalElement = document.createElement('div');
@@ -61,6 +63,7 @@ function openRpgManagementModal(title, type, settings, context) {
     const commitChanges = async (updatedVariables) => {
         if (!confirm("Are you sure you want to save these changes to the RPGLedger?")) return;
 
+        console.log("[RPGUI]: Committing variable changes to RPGLedger...");
         settings.runtimeVariables = updatedVariables;
         if (context?.extensionSettings) {
             context.extensionSettings['flush-monitor'] = settings;
@@ -338,10 +341,10 @@ function openPromptEditorModal(settings, context) {
  * ----------------------------------------------------------------------------
  */
 export function renderRpgSidebar(settings, context) {
-    console.log("RPG Engine [Sidebar]: renderRpgSidebar entry called.");
+    console.log("[RPGUI]: renderRpgSidebar entry called.");
     
     if (sidebarElement) {
-        console.log("RPG Engine [Sidebar]: Purging stale sidebar component container...");
+        console.log("[RPGUI]: Purging stale sidebar component container...");
         sidebarElement.remove();
         sidebarElement = null;
     }
@@ -352,17 +355,17 @@ export function renderRpgSidebar(settings, context) {
     const hasPosition = !!settings?.rpgSidebarPosition;
     const isNotHidden = settings?.rpgSidebarPosition !== "hidden";
 
-    console.log(`RPG Engine [Sidebar Guardrails Evaluation]: \n` +
+    console.log(`[RPGUI]: Sidebar Guardrails Evaluation: \n` +
                 ` - Position configuration defined: ${hasPosition} (${settings?.rpgSidebarPosition})\n` +
                 ` - Visibility status explicitly unlocked: ${isNotHidden}\n` +
                 ` - Target #chat or #chat_container present in DOM tree: ${chatContainerExists}`);
 
     if (!hasPosition || !isNotHidden || !chatContainerExists) {
-        console.warn("RPG Engine [Sidebar Halt]: Aborting initialization loop. Pre-flight alignment check failed.");
+        console.warn("[RPGUI]: Sidebar Halt: Aborting initialization loop. Pre-flight alignment check failed.");
         return;
     }
 
-    console.log("RPG Engine [Sidebar Block]: Constructing live sidebar component node layout...");
+    console.log("[RPGUI]: Constructing live sidebar component node layout...");
     sidebarElement = document.createElement('div');
     sidebarElement.id = 'rpg-status-sidebar';
     
@@ -535,7 +538,7 @@ export function renderRpgSidebar(settings, context) {
     tokenTracker.appendChild(createTokenTable(tokenData));
     sidebarElement.appendChild(tokenTracker);
 
-    console.log("RPG Engine [Sidebar]: Appending constructed sidebar element container directly to document.body...");
+    console.log("[RPGUI]: Appending constructed sidebar element container directly to document.body...");
     document.body.appendChild(sidebarElement);
 }
 
