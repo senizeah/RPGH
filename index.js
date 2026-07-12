@@ -220,9 +220,17 @@
                     try {
                         const requestSecure = window.SillyTavern?.requestSecure || stContext?.requestSecure;
                         if (typeof requestSecure === 'function') {
-                            const data = await requestSecure('/api/settings/get', {});
-                            if (data && data.connection_profiles) {
-                                rawProfiles = data.connection_profiles;
+                            try {
+                                const data = await requestSecure('/api/settings/get', {});
+                                if (data && data.connection_profiles) {
+                                    rawProfiles = data.connection_profiles;
+                                }
+                            } catch (parseErr) {
+                                if (parseErr instanceof SyntaxError && parseErr.message.includes("Unexpected token '<'")) {
+                                    logTelemetry('ProfileManager', 'Settings fallback fetch returned HTML instead of JSON (likely a 500 error).', 'warn');
+                                } else {
+                                    throw parseErr;
+                                }
                             }
                         }
                     } catch (apiErr) {
@@ -294,9 +302,17 @@
                                 try {
                                     const requestSecure = window.SillyTavern?.requestSecure || updateContext?.requestSecure;
                                     if (typeof requestSecure === 'function') {
-                                        const d = await requestSecure('/api/settings/get', {});
-                                        if (d && d.connection_profiles) {
-                                            freshProfiles = d.connection_profiles;
+                                        try {
+                                            const d = await requestSecure('/api/settings/get', {});
+                                            if (d && d.connection_profiles) {
+                                                freshProfiles = d.connection_profiles;
+                                            }
+                                        } catch (e) {
+                                            if (e instanceof SyntaxError && e.message.includes("Unexpected token '<'")) {
+                                                logTelemetry('ProfileManager', 'Settings fetch returned HTML instead of JSON (likely a 500 error).', 'warn');
+                                            } else {
+                                                throw e;
+                                            }
                                         }
                                     }
                                 } catch (e) {}
