@@ -142,8 +142,8 @@
             : [{ id: 'default', name: 'Default Profile' }];
 
         return safeArray.map(p => ({
-            id: p.id || p.name || 'default',
-            name: p.name || p.id || 'Default Profile'
+            id: (p.id !== undefined && p.id !== null && p.id !== '') ? p.id : (p.name || 'default'),
+            name: p.name || (p.id !== undefined && p.id !== null ? `Profile ID: ${p.id}` : 'Default Profile')
         }));
     };
 
@@ -202,6 +202,9 @@
             if (stContext) {
                 let rawProfiles = null;
 
+                const disabledList = stContext.extensionSettings?.disabledExtensions || [];
+                const isConnManagerActive = !disabledList.includes('connection-manager');
+
                 // DEBUG: Inspect stContext structure
                 logTelemetry('ProfileManager', `DEBUG: stContext.extensionSettings exists: ${!!stContext.extensionSettings}`, 'info');
                 if (stContext.extensionSettings) {
@@ -214,11 +217,15 @@
                 }
 
                 // 1. Resolve via connection manager settings profiles (as per Example-index.js)
-                const connManager = stContext.extensionSettings?.connectionManager || stContext?.connectionManager;
-                if (connManager?.profiles) {
-                    rawProfiles = connManager.profiles;
-                    const source = stContext.extensionSettings?.connectionManager ? 'extensionSettings' : 'root';
-                    logTelemetry('ProfileManager', `Method 1 success: Found ${rawProfiles.length} profiles via ${source}.`, 'info');
+                if (isConnManagerActive) {
+                    const connManager = stContext.extensionSettings?.connectionManager || stContext?.connectionManager;
+                    if (connManager?.profiles) {
+                        rawProfiles = connManager.profiles;
+                        const source = stContext.extensionSettings?.connectionManager ? 'extensionSettings' : 'root';
+                        logTelemetry('ProfileManager', `Method 1 success: Found ${rawProfiles.length} profiles via ${source}.`, 'info');
+                    }
+                } else {
+                    logTelemetry('ProfileManager', 'connection-manager is disabled in disabledExtensions.', 'warn');
                 }
 
                 // 2. Resolve via connection manager request service
